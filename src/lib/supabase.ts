@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -15,7 +15,7 @@ export interface Database {
           username: string | null;
           password_hash: string | null;
           full_name: string | null;
-          role: 'admin' | 'manager' | 'viewer' | null;
+          role: "admin" | "manager" | "viewer" | null;
           email: string;
           created_at: string | null;
           updated_at: string | null;
@@ -25,7 +25,7 @@ export interface Database {
           username?: string | null;
           password_hash?: string | null;
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'viewer' | null;
+          role?: "admin" | "manager" | "viewer" | null;
           email: string;
           created_at?: string | null;
           updated_at?: string | null;
@@ -35,7 +35,7 @@ export interface Database {
           username?: string | null;
           password_hash?: string | null;
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'viewer' | null;
+          role?: "admin" | "manager" | "viewer" | null;
           email?: string;
           created_at?: string | null;
           updated_at?: string | null;
@@ -93,7 +93,7 @@ export interface Database {
           license_plate: string;
           model: string | null;
           year: number | null;
-          status: 'active' | 'maintenance' | 'inactive' | null;
+          status: "active" | "maintenance" | "inactive" | null;
           vehicle_type_id: number | null;
           device_id: number | null;
           created_at: string | null;
@@ -104,7 +104,7 @@ export interface Database {
           license_plate: string;
           model?: string | null;
           year?: number | null;
-          status?: 'active' | 'maintenance' | 'inactive' | null;
+          status?: "active" | "maintenance" | "inactive" | null;
           vehicle_type_id?: number | null;
           device_id?: number | null;
           created_at?: string | null;
@@ -115,7 +115,7 @@ export interface Database {
           license_plate?: string;
           model?: string | null;
           year?: number | null;
-          status?: 'active' | 'maintenance' | 'inactive' | null;
+          status?: "active" | "maintenance" | "inactive" | null;
           vehicle_type_id?: number | null;
           device_id?: number | null;
           created_at?: string | null;
@@ -197,4 +197,4 @@ export interface Database {
       };
     };
   };
-} 
+}

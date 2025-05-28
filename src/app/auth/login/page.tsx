@@ -1,34 +1,49 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { LogIn, Truck, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
+import { LogIn, Truck, Eye, EyeOff, CheckCircle } from "lucide-react";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    // Check if user was redirected from sign-up
+    const fromSignUp = searchParams.get("signup");
+    if (fromSignUp === "success") {
+      setSuccess(
+        "Account created successfully! Please sign in with your credentials."
+      );
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
+    setSuccess("");
     setIsLoading(true);
 
     try {
       const result = await login(username, password);
       if (result.success) {
-        router.push('/dashboard');
+        router.push("/dashboard");
       } else {
-        setError(result.error || 'Login failed');
+        setError(result.error || "Login failed");
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -61,8 +76,18 @@ export default function LoginPage() {
               </div>
             )}
 
+            {success && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2" />
+                {success}
+              </div>
+            )}
+
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Username
               </label>
               <input
@@ -77,13 +102,16 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Password
               </label>
               <div className="relative">
                 <input
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -115,6 +143,19 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Sign Up Link */}
+          <div className="text-center mt-6">
+            <p className="text-sm text-gray-600">
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/auth/sign-up"
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Sign up
+              </Link>
+            </p>
+          </div>
 
           {/* Demo Credentials */}
           {/* <div className="mt-6 p-4 bg-gray-50 rounded-md">
@@ -148,4 +189,4 @@ export default function LoginPage() {
       </div>
     </div>
   );
-} 
+}
