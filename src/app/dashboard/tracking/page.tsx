@@ -1,82 +1,20 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
-import dynamic from 'next/dynamic';
-import { Truck, Layers, RefreshCw, MapPin } from 'lucide-react';
-import { useVehicles } from '@/hooks/useVehicles';
+import Map from '@/components/maps/Map';
 import { useRealTimeTracking } from '@/hooks/useTracking';
-import { formatVehicleStatus, getStatusColor, formatTime } from '@/utils/formatting';
-import { MapUtils } from '@/components/maps/ArcGISMap';
+import { useVehicles } from '@/hooks/useVehicles';
 import { MAP_CONFIG } from '@/utils/constants';
-import ClientOnly from '@/components/ClientOnly';
-
-// Dynamically import ArcGIS map to avoid SSR issues
-// Use explicit key to ensure proper component mounting/unmounting
-const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-        <div className="text-gray-600">Loading map...</div>
-      </div>
-    </div>
-  )
-});
-
-// Memoized vehicle list item to prevent unnecessary re-renders
-const VehicleListItem = memo(({
-  vehicle,
-  position,
-  isSelected,
-  onToggle
-}: {
-  vehicle: any;
-  position: any;
-  isSelected: boolean;
-  onToggle: () => void
-}) => (
-  <div
-    className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${isSelected
-      ? 'border-blue-500 bg-blue-50'
-      : 'border-gray-200 hover:bg-gray-50'
-      }`}
-    onClick={onToggle}
-  >
-    <div className="flex items-center space-x-3">
-      <div className={`p-2 rounded-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
-        <Truck className={`h-4 w-4 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-gray-900">
-          {vehicle.license_plate}
-        </p>
-        <p className="text-xs text-gray-500">
-          {vehicle.model || 'Unknown Model'}
-        </p>
-      </div>
-    </div>
-    <div className="text-right">
-      <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
-        {formatVehicleStatus(vehicle.status)}
-      </span>
-      {position && (
-        <p className="text-xs text-gray-400 mt-1">
-          Last update: {formatTime(position.timestamp)}
-        </p>
-      )}
-    </div>
-  </div>
-));
-
-VehicleListItem.displayName = 'VehicleListItem';
+import { formatTime, formatVehicleStatus, getStatusColor } from '@/utils/formatting';
+import { Layers, MapPin, RefreshCw } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import VehicleSelector from '@/components/vehicles/VehicleSelector';
 
 // Memoized update list item
 const UpdateListItem = memo(({ vehicle, position }: { vehicle: any; position: any }) => (
   <div className="flex items-center p-2 border-b border-gray-100">
     <div className="flex-shrink-0 mr-3">
       <div className="bg-blue-100 p-2 rounded-full">
-        <Truck className="h-4 w-4 text-blue-600" />
+        <MapPin className="h-4 w-4 text-blue-600" />
       </div>
     </div>
     <div className="flex-1 min-w-0">
@@ -102,7 +40,7 @@ UpdateListItem.displayName = 'UpdateListItem';
 
 function LiveTrackingPage() {
   const [mapView, setMapView] = useState<any>(null);
-  const [selectedVehicleIds, setSelectedVehicleIds] = useState<number[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [basemap, setBasemap] = useState(MAP_CONFIG.BASEMAPS.STREETS);
   const [autoZoom, setAutoZoom] = useState(true);
   const [isBasemapDropdownOpen, setIsBasemapDropdownOpen] = useState(false);
@@ -110,54 +48,25 @@ function LiveTrackingPage() {
 
   const { vehicles, loading: vehiclesLoading } = useVehicles();
 
-  // Memoize the selectedVehicleIds to prevent unnecessary rerenders
-  const memoizedSelectedVehicleIds = useMemo(() =>
-    selectedVehicleIds,
-    [selectedVehicleIds.join(',')]
+  // Prepare vehicle ID for the tracking hook
+  const vehicleIdArray = useMemo(() =>
+    selectedVehicleId ? [selectedVehicleId] : vehicles.map(v => v.id),
+    [selectedVehicleId, vehicles]
   );
 
-  const { currentPositions, loading: trackingLoading } = useRealTimeTracking(memoizedSelectedVehicleIds);
+  const { currentPositions, loading: trackingLoading } = useRealTimeTracking(vehicleIdArray);
 
-  // Initialize with all active vehicles selected
+  // Initialize with first active vehicle selected
   useEffect(() => {
-    if (!vehiclesLoading && vehicles.length > 0 && selectedVehicleIds.length === 0) {
-      const activeVehicleIds = vehicles
-        .filter(v => v.status === 'active')
-        .map(v => v.id);
-      setSelectedVehicleIds(activeVehicleIds);
-    }
-  }, [vehicles, vehiclesLoading, selectedVehicleIds]);
-
-  // Update map with vehicle positions - use requestAnimationFrame for better performance
-  useEffect(() => {
-    if (!mapView || !mapView.map || currentPositions.size === 0) return;
-
-    const animationFrameId = requestAnimationFrame(() => {
-      try {
-        // Clear existing vehicle markers
-        MapUtils.clearLayer(mapView, 'vehicles');
-
-        // Add current vehicle positions
-        currentPositions.forEach((position, vehicleId) => {
-          const vehicle = vehicles.find(v => v.id === vehicleId);
-          if (vehicle && position.location?.coordinates) {
-            MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
-          }
-        });
-
-        // Auto zoom to fit all vehicles if enabled
-        if (autoZoom && currentPositions.size > 0) {
-          MapUtils.zoomToLayer(mapView, 'vehicles');
-        }
-      } catch (error) {
-        console.error('Error updating map:', error);
+    if (!vehiclesLoading && vehicles.length > 0 && !selectedVehicleId) {
+      const activeVehicle = vehicles.find(v => v.status === 'active');
+      if (activeVehicle) {
+        setSelectedVehicleId(activeVehicle.id);
+      } else if (vehicles.length > 0) {
+        setSelectedVehicleId(vehicles[0].id);
       }
-    });
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [mapView, currentPositions, vehicles, autoZoom]);
+    }
+  }, [vehicles, vehiclesLoading, selectedVehicleId]);
 
   const handleMapLoad = useCallback((view: any) => {
     if (!mapInitialized.current) {
@@ -166,36 +75,17 @@ function LiveTrackingPage() {
     }
   }, []);
 
-  const toggleVehicleSelection = useCallback((vehicleId: number) => {
-    setSelectedVehicleIds(prev =>
-      prev.includes(vehicleId)
-        ? prev.filter(id => id !== vehicleId)
-        : [...prev, vehicleId]
-    );
+  const handleVehicleSelect = useCallback((vehicleId: number) => {
+    setSelectedVehicleId(vehicleId);
   }, []);
 
   const handleBasemapChange = useCallback((newBasemap: string) => {
     setBasemap(newBasemap);
     setIsBasemapDropdownOpen(false);
     if (mapView && mapView.map) {
-      MapUtils.changeBasemap(mapView, newBasemap);
+      // Implementation for changing basemap would go here
     }
   }, [mapView]);
-
-  const selectAllVehicles = useCallback(() => {
-    setSelectedVehicleIds(vehicles.map(v => v.id));
-  }, [vehicles]);
-
-  const deselectAllVehicles = useCallback(() => {
-    setSelectedVehicleIds([]);
-  }, []);
-
-  const selectActiveVehicles = useCallback(() => {
-    const activeIds = vehicles
-      .filter(v => v.status === 'active')
-      .map(v => v.id);
-    setSelectedVehicleIds(activeIds);
-  }, [vehicles]);
 
   const toggleBasemapDropdown = useCallback(() => {
     setIsBasemapDropdownOpen(prev => !prev);
@@ -228,55 +118,18 @@ function LiveTrackingPage() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">Vehicles</h2>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                onClick={selectAllVehicles}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-2 rounded"
-              >
-                Select All
-              </button>
-              <button
-                onClick={deselectAllVehicles}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-2 rounded"
-              >
-                Deselect All
-              </button>
-              <button
-                onClick={selectActiveVehicles}
-                className="text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded"
-              >
-                Active Only
-              </button>
-            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              Select a vehicle to track
+            </p>
           </div>
           <div className="p-4">
-            {vehiclesLoading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                <div className="text-gray-600">Loading vehicles...</div>
-              </div>
-            ) : vehicles.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No vehicles found
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {vehicles.map((vehicle) => {
-                  const position = currentPositions.get(vehicle.id);
-                  const isSelected = selectedVehicleIds.includes(vehicle.id);
-
-                  return (
-                    <VehicleListItem
-                      key={vehicle.id}
-                      vehicle={vehicle}
-                      position={position}
-                      isSelected={isSelected}
-                      onToggle={() => toggleVehicleSelection(vehicle.id)}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <VehicleSelector
+              vehicles={vehicles}
+              currentPositions={currentPositions}
+              selectedVehicleId={selectedVehicleId}
+              onSelectVehicle={handleVehicleSelect}
+              loading={vehiclesLoading}
+            />
           </div>
         </div>
 
@@ -287,7 +140,9 @@ function LiveTrackingPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Live Map</h2>
                 <p className="text-sm text-gray-600">
-                  {selectedVehicleIds.length} vehicles selected
+                  {selectedVehicleId
+                    ? `Tracking vehicle: ${vehicles.find(v => v.id === selectedVehicleId)?.license_plate || ''}`
+                    : 'No vehicle selected'}
                 </p>
               </div>
 
@@ -346,29 +201,22 @@ function LiveTrackingPage() {
 
                 {/* Refresh Button */}
                 <button
-                  className="flex items-center space-x-1 px-3 py-1 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50"
-                  onClick={() => {
-                    if (mapView && mapView.map) {
-                      MapUtils.zoomToLayer(mapView, 'vehicles');
-                    }
-                  }}
+                  onClick={() => window.location.reload()}
+                  className="flex items-center space-x-1 px-3 py-1 bg-white border border-gray-300 rounded-md text-sm"
                 >
                   <RefreshCw className="h-4 w-4 text-gray-500" />
+                  <span>Refresh</span>
                 </button>
               </div>
             </div>
 
             <div className="h-[600px]">
-              <ClientOnly fallback={
-                <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <div className="text-gray-600">Loading map...</div>
-                  </div>
-                </div>
-              }>
-                <ArcGISMap onMapLoad={handleMapLoad} key="tracking-map-component" />
-              </ClientOnly>
+              <Map
+                selectedVehicleId={selectedVehicleId}
+                onSelectVehicle={handleVehicleSelect}
+                mode="tracking"
+                key={`map-${selectedVehicleId}`}
+              />
             </div>
           </div>
         </div>

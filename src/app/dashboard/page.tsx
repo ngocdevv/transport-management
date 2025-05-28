@@ -6,22 +6,9 @@ import { Truck, MapPin, Route, Activity } from 'lucide-react';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useRealTimeTracking } from '@/hooks/useTracking';
 import { formatVehicleStatus, getStatusColor } from '@/utils/formatting';
-import { MapUtils } from '@/components/maps/ArcGISMap';
 import ClientOnly from '@/components/ClientOnly';
 import React from 'react';
 
-// Dynamically import ArcGIS map to avoid SSR issues
-const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-        <div className="text-gray-600">Loading map...</div>
-      </div>
-    </div>
-  )
-});
 
 // Memoized statistics card to prevent unnecessary re-renders
 const StatCard = React.memo(({
@@ -111,13 +98,13 @@ function DashboardPage() {
     const animationFrameId = requestAnimationFrame(() => {
       try {
         // Clear existing vehicle markers
-        MapUtils.clearLayer(mapView, 'vehicles');
+        // MapUtils.clearLayer(mapView, 'vehicles');
 
         // Add current vehicle positions
         currentPositions.forEach((position, vehicleId) => {
           const vehicle = vehicles.find(v => v.id === vehicleId);
           if (vehicle && position.location?.coordinates) {
-            MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
+            // MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
           }
         });
       } catch (error) {
@@ -169,7 +156,7 @@ function DashboardPage() {
               <p className="text-sm text-gray-600">Real-time vehicle positions</p>
             </div>
             <div className="h-96">
-              <ClientOnly fallback={
+              {/* <ClientOnly fallback={
                 <div className="w-full h-full flex items-center justify-center bg-gray-100">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
@@ -178,7 +165,7 @@ function DashboardPage() {
                 </div>
               }>
                 <ArcGISMap onMapLoad={handleMapLoad} key="map-component" />
-              </ClientOnly>
+              </ClientOnly> */}
             </div>
           </div>
         </div>

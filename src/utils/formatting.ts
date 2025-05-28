@@ -84,16 +84,20 @@ export function formatVehicleStatus(status: string | null): string {
 }
 
 // Format vehicle status with color class
-export function getStatusColor(status: string | null): string {
-  if (!status) return 'text-gray-500';
+export function getStatusColor(status: string | null, asBg = false): string {
+  if (!status) return asBg ? 'bg-gray-100 text-gray-500' : 'text-gray-500';
 
-  const colorMap: Record<string, string> = {
-    active: 'text-green-600',
-    maintenance: 'text-yellow-600',
-    inactive: 'text-red-600'
+  const statusMap: Record<string, { text: string; bg: string }> = {
+    active: { text: 'text-green-600', bg: 'bg-green-100 text-green-800' },
+    maintenance: { text: 'text-yellow-600', bg: 'bg-yellow-100 text-yellow-800' },
+    inactive: { text: 'text-red-600', bg: 'bg-red-100 text-red-800' },
+    idle: { text: 'text-blue-600', bg: 'bg-blue-100 text-blue-800' },
+    moving: { text: 'text-emerald-600', bg: 'bg-emerald-100 text-emerald-800' },
+    stopped: { text: 'text-orange-600', bg: 'bg-orange-100 text-orange-800' }
   };
 
-  return colorMap[status] || 'text-gray-500';
+  const defaultColor = asBg ? 'bg-gray-100 text-gray-500' : 'text-gray-500';
+  return statusMap[status] ? (asBg ? statusMap[status].bg : statusMap[status].text) : defaultColor;
 }
 
 // Format user role for display
