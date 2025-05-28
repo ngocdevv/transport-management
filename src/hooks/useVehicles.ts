@@ -35,16 +35,74 @@ export function useVehicles() {
     }
   };
 
-  const createVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>) => {
+  const createVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'> & {
+    _initialLatitude?: number;
+    _initialLongitude?: number;
+  }) => {
     try {
+      // Extract custom location properties before sending to the database
+      const { _initialLatitude, _initialLongitude, ...dbVehicleData } = vehicleData;
+
       const { data, error: supabaseError } = await supabase
         .from('vehicles')
-        .insert([vehicleData])
+        .insert([dbVehicleData])
         .select()
         .single();
 
       if (supabaseError) {
         throw supabaseError;
+      }
+
+      // Add initial position for the vehicle
+      if (data) {
+        // Generate random coordinates within Ho Chi Minh City area
+        // Ho Chi Minh City boundaries (approximate)
+        const minLat = 10.6;  // Southern boundary
+        const maxLat = 10.9;  // Northern boundary
+        const minLng = 106.5; // Western boundary
+        const maxLng = 106.9; // Eastern boundary
+
+        // Generate random coordinates within the boundaries
+        const latitude = _initialLatitude ?? (Math.random() * (maxLat - minLat) + minLat);
+        const longitude = _initialLongitude ?? (Math.random() * (maxLng - minLng) + minLng);
+
+        // Create a PostGIS Point geometry
+        const geomPoint = `POINT(${longitude} ${latitude})`;
+
+        // Insert initial position into live_vehicle_positions
+        const { error: positionError } = await supabase
+          .from('live_vehicle_positions')
+          .insert([{
+            vehicle_id: data.id,
+            current_position: geomPoint,
+            current_speed: 0,
+            current_heading: 0,
+            current_altitude: 0,
+            last_update: new Date().toISOString(),
+            is_online: true,
+            battery_level: 100,
+            signal_strength: 5
+          }]);
+
+        if (positionError) {
+          console.error('Error creating initial position:', positionError);
+        }
+
+        // Also add to track_points for historical data
+        const { error: trackPointError } = await supabase
+          .from('track_points')
+          .insert([{
+            vehicle_id: data.id,
+            location: geomPoint,
+            timestamp: new Date().toISOString(),
+            speed: 0,
+            heading: 0,
+            altitude: 0
+          }]);
+
+        if (trackPointError) {
+          console.error('Error creating track point:', trackPointError);
+        }
       }
 
       await fetchVehicles(); // Refresh the list

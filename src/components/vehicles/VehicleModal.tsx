@@ -211,6 +211,13 @@ export default function VehicleModal({
             </select>
           </div>
 
+          {/* Note about location */}
+          {!vehicle && (
+            <div className="mt-2 text-sm text-gray-600 italic">
+              Note: Vehicle will be placed at a random location in Ho Chi Minh City
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
             <button
