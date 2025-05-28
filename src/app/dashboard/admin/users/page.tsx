@@ -1,28 +1,41 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { UserPlus, Search, User, Shield, Edit, Trash2, AlertTriangle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { User as UserType, UserRole } from '@/lib/types';
-import { formatUserRole, formatDate } from '@/utils/formatting';
-import { useAuth } from '@/hooks/useAuth';
-import { checkPermission } from '@/lib/auth';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Search,
+  User,
+  Shield,
+  Edit,
+  Trash2,
+  AlertTriangle,
+  X,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { User as UserType, UserRole } from "@/lib/types";
+import { formatUserRole, formatDate } from "@/utils/formatting";
+import { useAuth } from "@/hooks/useAuth";
+import { checkPermission } from "@/lib/auth";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<UserRole | ''>('');
-  const [showConfirmDelete, setShowConfirmDelete] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UserRole | "">("");
+  const [showConfirmDelete, setShowConfirmDelete] = useState<string | null>(
+    null
+  );
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const { user: currentUser } = useAuth();
   const router = useRouter();
 
   // Check permission
   useEffect(() => {
-    if (!checkPermission('canManageUsers')) {
-      router.push('/dashboard');
+    if (!checkPermission("canManageUsers")) {
+      router.push("/dashboard");
     }
   }, [router]);
 
@@ -32,9 +45,9 @@ export default function UsersPage() {
       setLoading(true);
       try {
         const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .from("users")
+          .select("*")
+          .order("created_at", { ascending: false });
 
         console.log(data);
 
@@ -44,7 +57,7 @@ export default function UsersPage() {
 
         setUsers(data || []);
       } catch (err) {
-        console.error('Error fetching users:', err);
+        console.error("Error fetching users:", err);
       } finally {
         setLoading(false);
       }
@@ -54,15 +67,18 @@ export default function UsersPage() {
   }, []);
 
   // Handle search and filtering
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = users.filter((user) => {
     // Search term filter
-    const matchesSearch = searchTerm === '' ||
-      (user.username && user.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    const matchesSearch =
+      searchTerm === "" ||
+      (user.username &&
+        user.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (user.full_name &&
+        user.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
 
     // Role filter
-    const matchesRole = roleFilter === '' || user.role === roleFilter;
+    const matchesRole = roleFilter === "" || user.role === roleFilter;
 
     return matchesSearch && matchesRole;
   });
@@ -76,20 +92,54 @@ export default function UsersPage() {
         return;
       }
 
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from("users").delete().eq("id", id);
 
       if (error) {
         throw error;
       }
 
-      setUsers(users.filter(user => user.id !== id));
+      setUsers(users.filter((user) => user.id !== id));
       setShowConfirmDelete(null);
     } catch (err) {
-      console.error('Error deleting user:', err);
-      alert('Failed to delete user');
+      console.error("Error deleting user:", err);
+      alert("Failed to delete user");
+    }
+  };
+
+  // Handle edit role
+  const handleEditClick = (user: UserType) => {
+    setEditingUser(user);
+    setSelectedRole(user.role as UserRole);
+  };
+
+  const handleRoleUpdate = async () => {
+    if (!editingUser || !selectedRole) return;
+
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({ role: selectedRole })
+        .eq("id", editingUser.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      setUsers(
+        users.map((user) =>
+          user.id === editingUser.id ? { ...user, role: selectedRole } : user
+        )
+      );
+
+      // Close modal
+      setEditingUser(null);
+    } catch (err) {
+      console.error("Error updating user role:", err);
+      alert("Failed to update user role");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -101,10 +151,6 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-gray-600">Manage users and permissions</p>
         </div>
-        <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add User
-        </button>
       </div>
 
       {/* Filters */}
@@ -125,10 +171,12 @@ export default function UsersPage() {
         <div className="flex flex-wrap gap-4">
           {/* Role Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Role
+            </label>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as UserRole | '')}
+              onChange={(e) => setRoleFilter(e.target.value as UserRole | "")}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             >
               <option value="">All Roles</option>
@@ -142,8 +190,8 @@ export default function UsersPage() {
           <div className="flex items-end">
             <button
               onClick={() => {
-                setRoleFilter('');
-                setSearchTerm('');
+                setRoleFilter("");
+                setSearchTerm("");
               }}
               className="flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50"
             >
@@ -165,11 +213,13 @@ export default function UsersPage() {
             <div className="bg-gray-100 p-3 rounded-full inline-flex mb-4">
               <User className="h-8 w-8 text-gray-500" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-1">No users found</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">
+              No users found
+            </h3>
             <p className="text-gray-600">
-              {searchTerm || roleFilter ?
-                'Try adjusting your filters to see more results' :
-                'Add your first user to get started'}
+              {searchTerm || roleFilter
+                ? "Try adjusting your filters to see more results"
+                : "Add your first user to get started"}
             </p>
           </div>
         ) : (
@@ -195,7 +245,7 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.map(user => (
+                {filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -204,10 +254,10 @@ export default function UsersPage() {
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {user.full_name || 'Unnamed User'}
+                            {user.full_name || "Unnamed User"}
                           </div>
                           <div className="text-xs text-gray-500">
-                            @{user.username || 'no-username'}
+                            @{user.username || "no-username"}
                           </div>
                         </div>
                       </div>
@@ -217,17 +267,24 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Shield className={`h-4 w-4 mr-1 ${user.role === 'admin' ? 'text-purple-500' :
-                          user.role === 'manager' ? 'text-blue-500' :
-                            'text-green-500'
-                          }`} />
+                        <Shield
+                          className={`h-4 w-4 mr-1 ${
+                            user.role === "admin"
+                              ? "text-purple-500"
+                              : user.role === "manager"
+                              ? "text-blue-500"
+                              : "text-green-500"
+                          }`}
+                        />
                         <span className="text-sm font-medium">
                           {formatUserRole(user.role)}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.created_at ? formatDate(new Date(user.created_at)) : 'Unknown'}
+                      {user.created_at
+                        ? formatDate(new Date(user.created_at))
+                        : "Unknown"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       {showConfirmDelete === user.id ? (
@@ -251,16 +308,41 @@ export default function UsersPage() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-end space-x-3">
-                          <button className="text-indigo-600 hover:text-indigo-900">
-                            <Edit className="h-4 w-4" />
+                          <button
+                            onClick={() => handleEditClick(user)}
+                            className="text-indigo-600 hover:text-indigo-900"
+                            disabled={user.id === currentUser?.id}
+                            title={
+                              user.id === currentUser?.id
+                                ? "You cannot change your own role"
+                                : "Edit user role"
+                            }
+                          >
+                            <Edit
+                              className={`h-4 w-4 ${
+                                user.id === currentUser?.id
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            />
                           </button>
                           <button
                             onClick={() => setShowConfirmDelete(user.id)}
                             className="text-red-600 hover:text-red-900"
                             disabled={user.id === currentUser?.id}
-                            title={user.id === currentUser?.id ? "Cannot delete your own account" : "Delete user"}
+                            title={
+                              user.id === currentUser?.id
+                                ? "Cannot delete your own account"
+                                : "Delete user"
+                            }
                           >
-                            <Trash2 className={`h-4 w-4 ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                            <Trash2
+                              className={`h-4 w-4 ${
+                                user.id === currentUser?.id
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            />
                           </button>
                         </div>
                       )}
@@ -273,9 +355,102 @@ export default function UsersPage() {
         )}
       </div>
 
+      {/* Edit Role Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                Edit User Role
+              </h3>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <div className="flex items-center mb-4">
+                <div className="bg-indigo-100 p-2 rounded-full mr-3">
+                  <User className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <div className="font-medium">
+                    {editingUser.full_name || "Unnamed User"}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {editingUser.email}
+                  </div>
+                </div>
+              </div>
+
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Select Role
+              </label>
+              <select
+                value={selectedRole || ""}
+                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="manager">Manager</option>
+                <option value="viewer">Viewer</option>
+              </select>
+
+              <div className="mt-3 text-sm text-gray-500">
+                {selectedRole === "admin" && (
+                  <div className="flex items-center text-purple-700">
+                    <Shield className="h-4 w-4 mr-1 text-purple-500" />
+                    Full system access with user management capabilities
+                  </div>
+                )}
+                {selectedRole === "manager" && (
+                  <div className="flex items-center text-blue-700">
+                    <Shield className="h-4 w-4 mr-1 text-blue-500" />
+                    Can manage vehicles and view reports but cannot manage users
+                  </div>
+                )}
+                {selectedRole === "viewer" && (
+                  <div className="flex items-center text-green-700">
+                    <Shield className="h-4 w-4 mr-1 text-green-500" />
+                    Read-only access with limited dashboard features
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setEditingUser(null)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRoleUpdate}
+                disabled={isUpdating || selectedRole === editingUser.role}
+                className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdating ? (
+                  <span className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Updating...
+                  </span>
+                ) : (
+                  "Update Role"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Roles & Permissions Info */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Roles & Permissions</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Roles & Permissions
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border border-purple-200 bg-purple-50 rounded-lg p-4">
             <div className="flex items-center mb-2">
@@ -322,4 +497,4 @@ export default function UsersPage() {
       </div>
     </div>
   );
-} 
+}
