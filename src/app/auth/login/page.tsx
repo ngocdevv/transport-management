@@ -37,7 +37,17 @@ export default function LoginPage() {
     try {
       const result = await login(username, password);
       if (result.success) {
-        router.push("/dashboard");
+        // Get user from auth context to check role
+        const user = localStorage.getItem("currentUser");
+        const userData = user ? JSON.parse(user) : null;
+
+        if (userData?.role === "viewer") {
+          // Redirect to access denied page if user is a viewer
+          router.push("/access-denied");
+        } else {
+          // Allow access to dashboard for other roles
+          router.push("/dashboard");
+        }
       } else {
         setError(result.error || "Login failed");
       }
