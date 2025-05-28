@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Truck, MapPin, Route, Activity } from 'lucide-react';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useRealTimeTracking } from '@/hooks/useTracking';
 import { formatVehicleStatus, getStatusColor } from '@/utils/formatting';
 import { MapUtils } from '@/components/maps/ArcGISMap';
+import ClientOnly from '@/components/ClientOnly';
+import React from 'react';
 
 // Dynamically import ArcGIS map to avoid SSR issues
 const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
@@ -21,39 +23,138 @@ const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
   )
 });
 
+// Memoized statistics card to prevent unnecessary re-renders
+const StatCard = React.memo(({
+  title,
+  value,
+  icon: Icon,
+  color
+}: {
+  title: string;
+  value: number;
+  icon: any;
+  color: string;
+}) => (
+  <div className="bg-white rounded-lg shadow p-6">
+    <div className="flex items-center">
+      <div className={`bg-${color}-100 p-3 rounded-full`}>
+        <Icon className={`h-6 w-6 text-${color}-600`} />
+      </div>
+      <div className="ml-4">
+        <p className="text-sm font-medium text-gray-500">{title}</p>
+        <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
+      </div>
+    </div>
+  </div>
+));
+
+// Memoized vehicle item to prevent unnecessary re-renders
+const VehicleItem = React.memo(({
+  vehicle,
+  position
+}: {
+  vehicle: any;
+  position?: any;
+}) => (
+  <div className="flex items-center justify-between p-3 border border-gray-200 rounded-md">
+    <div className="flex items-center space-x-3">
+      <div className="bg-gray-100 p-2 rounded-full">
+        <Truck className="h-4 w-4 text-gray-600" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-gray-900">
+          {vehicle.license_plate}
+        </p>
+        <p className="text-xs text-gray-500">
+          {vehicle.model || 'Unknown Model'}
+        </p>
+      </div>
+    </div>
+    <div className="text-right">
+      <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
+        {formatVehicleStatus(vehicle.status)}
+      </span>
+      {position && (
+        <p className="text-xs text-gray-400 mt-1">
+          Last seen: {new Date(position.timestamp).toLocaleTimeString()}
+        </p>
+      )}
+    </div>
+  </div>
+));
+
 export default function DashboardPage() {
   const [mapView, setMapView] = useState<any>(null);
   const { vehicles, loading: vehiclesLoading } = useVehicles();
-  const vehicleIds = vehicles.map(v => v.id);
+
+  // Memoize vehicleIds to prevent unnecessary calculations
+  const vehicleIds = useMemo(() => vehicles.map(v => v.id), [vehicles]);
+
   const { currentPositions, loading: trackingLoading } = useRealTimeTracking(vehicleIds);
 
-  // Calculate statistics
-  const stats = {
+  // Calculate statistics with memoization to prevent recalculation on every render
+  const stats = useMemo(() => ({
     total: vehicles.length,
     active: vehicles.filter(v => v.status === 'active').length,
     maintenance: vehicles.filter(v => v.status === 'maintenance').length,
     inactive: vehicles.filter(v => v.status === 'inactive').length
-  };
+  }), [vehicles]);
 
-  // Update map with vehicle positions
+  // Memoize callback to reduce rerenders
+  const handleMapLoad = useCallback((view: any) => {
+    setMapView(view);
+  }, []);
+
+  // Update map with vehicle positions - optimized to reduce rerenders
   useEffect(() => {
-    if (!mapView || currentPositions.size === 0) return;
+    if (!mapView || !mapView.map || currentPositions.size === 0) return;
 
-    // Clear existing vehicle markers
-    MapUtils.clearLayer(mapView, 'vehicles');
+    // Use requestAnimationFrame to ensure smooth UI
+    const animationFrameId = requestAnimationFrame(() => {
+      // Clear existing vehicle markers
+      MapUtils.clearLayer(mapView, 'vehicles');
 
-    // Add current vehicle positions
-    currentPositions.forEach((position, vehicleId) => {
-      const vehicle = vehicles.find(v => v.id === vehicleId);
-      if (vehicle && position.location?.coordinates) {
-        MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
-      }
+      // Add current vehicle positions
+      currentPositions.forEach((position, vehicleId) => {
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (vehicle && position.location?.coordinates) {
+          MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
+        }
+      });
     });
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
   }, [mapView, currentPositions, vehicles]);
 
-  const handleMapLoad = (view: any) => {
-    setMapView(view);
-  };
+  // Memoize activity items to prevent unnecessary re-renders
+  const activityItems = useMemo(() => {
+    return Array.from(currentPositions.entries())
+      .slice(0, 5)
+      .map(([vehicleId, position]) => {
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (!vehicle) return null;
+
+        return (
+          <div key={vehicleId} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-md">
+            <div className="bg-blue-100 p-2 rounded-full">
+              <MapPin className="h-4 w-4 text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900">
+                {vehicle.license_plate} updated position
+              </p>
+              <p className="text-xs text-gray-500">
+                {new Date(position.timestamp).toLocaleString()} •
+                Speed: {position.speed ? `${position.speed.toFixed(1)} km/h` : 'N/A'}
+              </p>
+            </div>
+          </div>
+        );
+      })
+      .filter(Boolean);
+  }, [currentPositions, vehicles]);
 
   return (
     <div className="space-y-6">
@@ -65,53 +166,10 @@ export default function DashboardPage() {
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="bg-blue-100 p-3 rounded-full">
-              <Truck className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Total Vehicles</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="bg-green-100 p-3 rounded-full">
-              <Activity className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Active</p>
-              <p className="text-2xl font-bold text-green-600">{stats.active}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="bg-yellow-100 p-3 rounded-full">
-              <MapPin className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Maintenance</p>
-              <p className="text-2xl font-bold text-yellow-600">{stats.maintenance}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="bg-red-100 p-3 rounded-full">
-              <Route className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Inactive</p>
-              <p className="text-2xl font-bold text-red-600">{stats.inactive}</p>
-            </div>
-          </div>
-        </div>
+        <StatCard title="Total Vehicles" value={stats.total} icon={Truck} color="blue" />
+        <StatCard title="Active" value={stats.active} icon={Activity} color="green" />
+        <StatCard title="Maintenance" value={stats.maintenance} icon={MapPin} color="yellow" />
+        <StatCard title="Inactive" value={stats.inactive} icon={Route} color="red" />
       </div>
 
       {/* Main Content Grid */}
@@ -124,7 +182,16 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-600">Real-time vehicle positions</p>
             </div>
             <div className="h-96">
-              <ArcGISMap onMapLoad={handleMapLoad} />
+              <ClientOnly fallback={
+                <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="text-gray-600">Loading map...</div>
+                  </div>
+                </div>
+              }>
+                <ArcGISMap onMapLoad={handleMapLoad} key="map-component" />
+              </ClientOnly>
             </div>
           </div>
         </div>
@@ -147,36 +214,13 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3 max-h-80 overflow-y-auto">
-                {vehicles.map((vehicle) => {
-                  const position = currentPositions.get(vehicle.id);
-                  return (
-                    <div key={vehicle.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-md">
-                      <div className="flex items-center space-x-3">
-                        <div className="bg-gray-100 p-2 rounded-full">
-                          <Truck className="h-4 w-4 text-gray-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {vehicle.license_plate}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {vehicle.model || 'Unknown Model'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
-                          {formatVehicleStatus(vehicle.status)}
-                        </span>
-                        {position && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Last seen: {new Date(position.timestamp).toLocaleTimeString()}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {vehicles.map((vehicle) => (
+                  <VehicleItem
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    position={currentPositions.get(vehicle.id)}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -191,27 +235,11 @@ export default function DashboardPage() {
         </div>
         <div className="p-4">
           <div className="space-y-3">
-            {Array.from(currentPositions.entries()).slice(0, 5).map(([vehicleId, position]) => {
-              const vehicle = vehicles.find(v => v.id === vehicleId);
-              if (!vehicle) return null;
-
-              return (
-                <div key={vehicleId} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-md">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <MapPin className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {vehicle.license_plate} updated position
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(position.timestamp).toLocaleString()} •
-                      Speed: {position.speed ? `${position.speed.toFixed(1)} km/h` : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            {activityItems.length > 0 ? activityItems : (
+              <div className="text-center py-8 text-gray-500">
+                No recent activity
+              </div>
+            )}
           </div>
         </div>
       </div>

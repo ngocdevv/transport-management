@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { TrackPoint, Journey, DateRange } from '@/lib/types';
 import { postgisToGeoJSON } from '@/utils/geometry';
@@ -9,6 +9,15 @@ export function useTracking(vehicleId: number | null, dateRange?: DateRange) {
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Memoize dateRange to prevent unnecessary refetches
+  const memoizedDateRange = useMemo(() => {
+    if (!dateRange) return undefined;
+    return {
+      start: dateRange.start,
+      end: dateRange.end
+    };
+  }, [dateRange?.start.toISOString(), dateRange?.end.toISOString()]);
 
   const fetchTrackingData = useCallback(async () => {
     if (!vehicleId) return;
@@ -23,10 +32,10 @@ export function useTracking(vehicleId: number | null, dateRange?: DateRange) {
         .eq('vehicle_id', vehicleId)
         .order('timestamp', { ascending: true });
 
-      if (dateRange) {
+      if (memoizedDateRange) {
         query = query
-          .gte('timestamp', dateRange.start.toISOString())
-          .lte('timestamp', dateRange.end.toISOString());
+          .gte('timestamp', memoizedDateRange.start.toISOString())
+          .lte('timestamp', memoizedDateRange.end.toISOString());
       }
 
       const { data, error: supabaseError } = await query;
@@ -47,7 +56,7 @@ export function useTracking(vehicleId: number | null, dateRange?: DateRange) {
     } finally {
       setLoading(false);
     }
-  }, [vehicleId, dateRange]);
+  }, [vehicleId, memoizedDateRange]);
 
   useEffect(() => {
     fetchTrackingData();
@@ -59,6 +68,16 @@ export function useTracking(vehicleId: number | null, dateRange?: DateRange) {
 export function useRealTimeTracking(vehicleIds: number[]) {
   const [currentPositions, setCurrentPositions] = useState<Map<number, TrackPoint>>(new Map());
   const [loading, setLoading] = useState(true);
+
+  // Store subscription in a ref to avoid recreating on every render
+  const subscriptionRef = useRef<any>(null);
+
+  // Memoize vehicleIds to prevent unnecessary subscription changes
+  const memoizedVehicleIds = useMemo(() =>
+    // Only update when the actual IDs change, not just the array reference
+    vehicleIds.slice().sort().join(','),
+    [vehicleIds]
+  );
 
   useEffect(() => {
     if (vehicleIds.length === 0) {
@@ -79,9 +98,16 @@ export function useRealTimeTracking(vehicleIds: number[]) {
 
         // Get the latest position for each vehicle
         const latestPositions = new Map<number, TrackPoint>();
+
+        // Process data only once and store in map
+        const processedVehicles = new Set<number>();
+
         data?.forEach(point => {
           const vehicleId = point.vehicle_id;
-          if (!latestPositions.has(vehicleId)) {
+
+          // Only process the first (most recent) point for each vehicle
+          if (!processedVehicles.has(vehicleId)) {
+            processedVehicles.add(vehicleId);
             latestPositions.set(vehicleId, {
               ...point,
               location: postgisToGeoJSON(point.location)
@@ -99,8 +125,14 @@ export function useRealTimeTracking(vehicleIds: number[]) {
 
     fetchInitialPositions();
 
+    // Clean up existing subscription if it exists
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+    }
+
     // Set up real-time subscription
-    const subscription = supabase
+    subscriptionRef.current = supabase
       .channel('track_points_realtime')
       .on('postgres_changes', {
         event: 'INSERT',
@@ -109,21 +141,34 @@ export function useRealTimeTracking(vehicleIds: number[]) {
         filter: `vehicle_id=in.(${vehicleIds.join(',')})`
       }, (payload) => {
         const newPoint = payload.new as any;
+
+        // Avoid unnecessary state updates by checking if the position is newer
         setCurrentPositions(prev => {
-          const updated = new Map(prev);
-          updated.set(newPoint.vehicle_id, {
-            ...newPoint,
-            location: postgisToGeoJSON(newPoint.location)
-          });
-          return updated;
+          const existingPoint = prev.get(newPoint.vehicle_id);
+
+          // If we have no existing point or the new point is more recent
+          if (!existingPoint || new Date(newPoint.timestamp) > new Date(existingPoint.timestamp)) {
+            const updated = new Map(prev);
+            updated.set(newPoint.vehicle_id, {
+              ...newPoint,
+              location: postgisToGeoJSON(newPoint.location)
+            });
+            return updated;
+          }
+
+          // No update needed
+          return prev;
         });
       })
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
     };
-  }, [vehicleIds]);
+  }, [memoizedVehicleIds]); // Only recreate subscription when vehicleIds actually change
 
   return { currentPositions, loading };
 }
@@ -132,6 +177,15 @@ export function useJourneys(vehicleId?: number, dateRange?: DateRange) {
   const [journeys, setJourneys] = useState<Journey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Memoize dateRange to prevent unnecessary refetches
+  const memoizedDateRange = useMemo(() => {
+    if (!dateRange) return undefined;
+    return {
+      start: dateRange.start,
+      end: dateRange.end
+    };
+  }, [dateRange?.start.toISOString(), dateRange?.end.toISOString()]);
 
   const fetchJourneys = useCallback(async () => {
     setLoading(true);
@@ -150,10 +204,10 @@ export function useJourneys(vehicleId?: number, dateRange?: DateRange) {
         query = query.eq('vehicle_id', vehicleId);
       }
 
-      if (dateRange) {
+      if (memoizedDateRange) {
         query = query
-          .gte('start_timestamp', dateRange.start.toISOString())
-          .lte('start_timestamp', dateRange.end.toISOString());
+          .gte('start_timestamp', memoizedDateRange.start.toISOString())
+          .lte('start_timestamp', memoizedDateRange.end.toISOString());
       }
 
       const { data, error: supabaseError } = await query;
@@ -175,7 +229,7 @@ export function useJourneys(vehicleId?: number, dateRange?: DateRange) {
     } finally {
       setLoading(false);
     }
-  }, [vehicleId, dateRange]);
+  }, [vehicleId, memoizedDateRange]);
 
   useEffect(() => {
     fetchJourneys();
@@ -190,8 +244,19 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
-  const startTime = trackPoints.length > 0 ? new Date(trackPoints[0].timestamp) : null;
-  const endTime = trackPoints.length > 0 ? new Date(trackPoints[trackPoints.length - 1].timestamp) : null;
+  // Memoize these values to prevent unnecessary rerenders
+  const startTime = useMemo(() =>
+    trackPoints.length > 0 ? new Date(trackPoints[0].timestamp) : null,
+    [trackPoints.length > 0 ? trackPoints[0].timestamp : null]
+  );
+
+  const endTime = useMemo(() =>
+    trackPoints.length > 0 ? new Date(trackPoints[trackPoints.length - 1].timestamp) : null,
+    [trackPoints.length > 0 ? trackPoints[trackPoints.length - 1].timestamp : null]
+  );
+
+  // Store interval ID in a ref
+  const intervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (trackPoints.length > 0 && currentIndex < trackPoints.length) {
@@ -200,9 +265,16 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
   }, [currentIndex, trackPoints]);
 
   useEffect(() => {
+    // Clean up existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
     if (!isPlaying || currentIndex >= trackPoints.length - 1) return;
 
-    const interval = setInterval(() => {
+    // Store interval ID in ref
+    intervalRef.current = window.setInterval(() => {
       setCurrentIndex(prev => {
         if (prev >= trackPoints.length - 1) {
           setIsPlaying(false);
@@ -212,21 +284,26 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
       });
     }, 1000 / playbackSpeed);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [isPlaying, playbackSpeed, trackPoints.length, currentIndex]);
 
-  const play = () => setIsPlaying(true);
-  const pause = () => setIsPlaying(false);
-  const reset = () => {
+  const play = useCallback(() => setIsPlaying(true), []);
+  const pause = useCallback(() => setIsPlaying(false), []);
+  const reset = useCallback(() => {
     setCurrentIndex(0);
     setIsPlaying(false);
-  };
+  }, []);
 
-  const seekTo = (index: number) => {
+  const seekTo = useCallback((index: number) => {
     setCurrentIndex(Math.max(0, Math.min(index, trackPoints.length - 1)));
-  };
+  }, [trackPoints.length]);
 
-  const seekToTime = (time: Date) => {
+  const seekToTime = useCallback((time: Date) => {
     const targetTime = time.getTime();
     let closestIndex = 0;
     let closestDiff = Math.abs(new Date(trackPoints[0]?.timestamp || 0).getTime() - targetTime);
@@ -240,26 +317,25 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
     });
 
     seekTo(closestIndex);
-  };
+  }, [trackPoints, seekTo]);
 
-  const getCurrentPosition = () => {
+  const getCurrentPosition = useCallback(() => {
     return trackPoints[currentIndex] || null;
-  };
+  }, [trackPoints, currentIndex]);
 
   return {
     currentIndex,
     currentTime,
-    startTime,
-    endTime,
     isPlaying,
     playbackSpeed,
+    startTime,
+    endTime,
     play,
     pause,
     reset,
     seekTo,
     seekToTime,
     setPlaybackSpeed,
-    getCurrentPosition,
-    progress: trackPoints.length > 0 ? (currentIndex / (trackPoints.length - 1)) * 100 : 0
+    getCurrentPosition
   };
 } 

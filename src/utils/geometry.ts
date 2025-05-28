@@ -142,26 +142,69 @@ export function interpolatePosition(
   return [interpolatedLon, interpolatedLat];
 }
 
-// Convert PostGIS geometry to GeoJSON format
+// Cache for storing converted geometries
+const geoJSONCache = new Map<string, {
+  type: 'Point';
+  coordinates: [number, number];
+}>();
+
+// Maximum size for the cache to prevent memory leaks
+const MAX_CACHE_SIZE = 1000;
+
+// Convert PostGIS geometry to GeoJSON format with caching
 export function postgisToGeoJSON(postgisGeometry: any): {
   type: 'Point';
   coordinates: [number, number];
 } {
+  // Null check
+  if (!postgisGeometry) {
+    return { type: 'Point', coordinates: [0, 0] };
+  }
+
+  // Generate a cache key
+  const cacheKey = typeof postgisGeometry === 'string'
+    ? postgisGeometry
+    : postgisGeometry.coordinates
+      ? `${postgisGeometry.coordinates[0]},${postgisGeometry.coordinates[1]}`
+      : JSON.stringify(postgisGeometry);
+
+  // Return from cache if available
+  if (geoJSONCache.has(cacheKey)) {
+    return geoJSONCache.get(cacheKey)!;
+  }
+
+  // Calculate result
+  let result: { type: 'Point'; coordinates: [number, number] };
+
   // Handle different PostGIS geometry formats
   if (typeof postgisGeometry === 'string') {
     // Parse WKT format: "POINT(105.8342 21.0278)"
     const match = postgisGeometry.match(/POINT\(([^)]+)\)/);
-    if (match) {
+    if (match && match[1]) {
       const [lon, lat] = match[1].split(' ').map(Number);
-      return { type: 'Point', coordinates: [lon, lat] };
+      result = { type: 'Point', coordinates: [lon, lat] };
+    } else {
+      result = { type: 'Point', coordinates: [0, 0] };
     }
   }
-
   // If already in GeoJSON format
-  if (postgisGeometry && postgisGeometry.coordinates) {
-    return postgisGeometry;
+  else if (postgisGeometry && postgisGeometry.coordinates) {
+    result = postgisGeometry;
+  }
+  // Default fallback
+  else {
+    result = { type: 'Point', coordinates: [0, 0] };
   }
 
-  // Default fallback
-  return { type: 'Point', coordinates: [0, 0] };
+  // Manage cache size
+  if (geoJSONCache.size >= MAX_CACHE_SIZE) {
+    // Remove the oldest entry (first key)
+    const firstKey = geoJSONCache.keys().next().value;
+    geoJSONCache.delete(firstKey);
+  }
+
+  // Store in cache
+  geoJSONCache.set(cacheKey, result);
+
+  return result;
 } 

@@ -1,17 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { MAP_CONFIG } from '@/utils/constants';
-
-// ArcGIS imports - these will be loaded dynamically
-let MapView: any;
-let Map: any;
-let GraphicsLayer: any;
-let Graphic: any;
-let Point: any;
-let SimpleMarkerSymbol: any;
-let Polyline: any;
-let SimpleLineSymbol: any;
+import { loadArcGISModules, ArcGISModules } from '@/utils/arcgisLoader';
 
 interface ArcGISMapProps {
   onMapLoad?: (view: any) => void;
@@ -30,56 +21,36 @@ export default function ArcGISMap({
   const viewRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modules, setModules] = useState<ArcGISModules | null>(null);
+
+  // Memoize center and zoom to prevent unnecessary re-renders
+  const memoizedCenter = useMemo(() => center, [center[0], center[1]]);
+  const memoizedZoom = useMemo(() => zoom, [zoom]);
 
   useEffect(() => {
     let mounted = true;
 
     const initializeMap = async () => {
       try {
-        // Dynamically import ArcGIS modules
-        const [
-          MapViewModule,
-          MapModule,
-          GraphicsLayerModule,
-          GraphicModule,
-          PointModule,
-          SimpleMarkerSymbolModule,
-          PolylineModule,
-          SimpleLineSymbolModule
-        ] = await Promise.all([
-          import('@arcgis/core/views/MapView'),
-          import('@arcgis/core/Map'),
-          import('@arcgis/core/layers/GraphicsLayer'),
-          import('@arcgis/core/Graphic'),
-          import('@arcgis/core/geometry/Point'),
-          import('@arcgis/core/symbols/SimpleMarkerSymbol'),
-          import('@arcgis/core/geometry/Polyline'),
-          import('@arcgis/core/symbols/SimpleLineSymbol')
-        ]);
+        // Load ArcGIS modules efficiently
+        const arcgisModules = await loadArcGISModules();
+        if (!mounted) return;
 
-        // Assign to module variables
-        MapView = MapViewModule.default;
-        Map = MapModule.default;
-        GraphicsLayer = GraphicsLayerModule.default;
-        Graphic = GraphicModule.default;
-        Point = PointModule.default;
-        SimpleMarkerSymbol = SimpleMarkerSymbolModule.default;
-        Polyline = PolylineModule.default;
-        SimpleLineSymbol = SimpleLineSymbolModule.default;
+        setModules(arcgisModules);
 
-        if (!mounted || !mapDiv.current) return;
+        if (!mapDiv.current) return;
 
         // Create the map
-        const map = new Map({
+        const map = new arcgisModules.Map({
           basemap: MAP_CONFIG.BASEMAPS.STREETS
         });
 
         // Create the map view
-        const view = new MapView({
+        const view = new arcgisModules.MapView({
           container: mapDiv.current,
           map: map,
-          center: center,
-          zoom: zoom,
+          center: memoizedCenter,
+          zoom: memoizedZoom,
           constraints: {
             minZoom: MAP_CONFIG.MIN_ZOOM,
             maxZoom: MAP_CONFIG.MAX_ZOOM
@@ -87,12 +58,12 @@ export default function ArcGISMap({
         });
 
         // Add graphics layers for vehicles and routes
-        const vehicleLayer = new GraphicsLayer({
+        const vehicleLayer = new arcgisModules.GraphicsLayer({
           id: 'vehicles',
           title: 'Vehicles'
         });
 
-        const routeLayer = new GraphicsLayer({
+        const routeLayer = new arcgisModules.GraphicsLayer({
           id: 'routes',
           title: 'Routes'
         });
@@ -129,7 +100,7 @@ export default function ArcGISMap({
         viewRef.current = null;
       }
     };
-  }, [center, zoom, onMapLoad]);
+  }, [memoizedCenter, memoizedZoom, onMapLoad]);
 
   if (error) {
     return (
@@ -165,14 +136,18 @@ export default function ArcGISMap({
 export const MapUtils = {
   // Add a vehicle marker to the map
   addVehicleMarker: (view: any, vehicle: any, position: [number, number]) => {
-    if (!view || !Point || !SimpleMarkerSymbol || !Graphic) return null;
+    if (!view || !view.map) return null;
 
-    const point = new Point({
+    // Access ArcGIS modules
+    const arcgisModules = getArcGISModulesFromView(view);
+    if (!arcgisModules) return null;
+
+    const point = new arcgisModules.Point({
       longitude: position[0],
       latitude: position[1]
     });
 
-    const symbol = new SimpleMarkerSymbol({
+    const symbol = new arcgisModules.SimpleMarkerSymbol({
       color: [51, 130, 246], // Blue color
       size: 12,
       outline: {
@@ -181,7 +156,7 @@ export const MapUtils = {
       }
     });
 
-    const graphic = new Graphic({
+    const graphic = new arcgisModules.Graphic({
       geometry: point,
       symbol: symbol,
       attributes: {
@@ -211,18 +186,22 @@ export const MapUtils = {
 
   // Add a route polyline to the map
   addRoute: (view: any, coordinates: number[][], vehicleId: number) => {
-    if (!view || !Polyline || !SimpleLineSymbol || !Graphic) return null;
+    if (!view || !view.map) return null;
 
-    const polyline = new Polyline({
+    // Access ArcGIS modules
+    const arcgisModules = getArcGISModulesFromView(view);
+    if (!arcgisModules) return null;
+
+    const polyline = new arcgisModules.Polyline({
       paths: [coordinates]
     });
 
-    const symbol = new SimpleLineSymbol({
+    const symbol = new arcgisModules.SimpleLineSymbol({
       color: [255, 0, 0, 0.8], // Red color with transparency
       width: 3
     });
 
-    const graphic = new Graphic({
+    const graphic = new arcgisModules.Graphic({
       geometry: polyline,
       symbol: symbol,
       attributes: {
@@ -241,7 +220,7 @@ export const MapUtils = {
 
   // Clear all graphics from a layer
   clearLayer: (view: any, layerId: string) => {
-    if (!view) return;
+    if (!view || !view.map) return;
 
     const layer = view.map.findLayerById(layerId);
     if (layer) {
@@ -251,7 +230,7 @@ export const MapUtils = {
 
   // Zoom to fit all graphics in a layer
   zoomToLayer: (view: any, layerId: string) => {
-    if (!view) return;
+    if (!view || !view.map) return;
 
     const layer = view.map.findLayerById(layerId);
     if (layer && layer.graphics.length > 0) {
@@ -261,7 +240,32 @@ export const MapUtils = {
 
   // Change basemap
   changeBasemap: (view: any, basemap: string) => {
-    if (!view) return;
+    if (!view || !view.map) return;
     view.map.basemap = basemap;
   }
-}; 
+};
+
+// Helper to extract ArcGIS modules from view
+function getArcGISModulesFromView(view: any) {
+  if (!view) return null;
+
+  // The Point constructor is on the view's Point property
+  const Point = view.Point;
+  const Graphic = view.Graphic;
+  const SimpleMarkerSymbol = view.SimpleMarkerSymbol;
+  const Polyline = view.Polyline;
+  const SimpleLineSymbol = view.SimpleLineSymbol;
+
+  if (!Point || !Graphic || !SimpleMarkerSymbol || !Polyline || !SimpleLineSymbol) {
+    // Fall back to loading modules if not available on view
+    return null;
+  }
+
+  return {
+    Point,
+    Graphic,
+    SimpleMarkerSymbol,
+    Polyline,
+    SimpleLineSymbol
+  };
+} 

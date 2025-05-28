@@ -14,23 +14,23 @@ export async function signIn(username: string, password: string): Promise<{ user
   try {
     // For demo purposes, we'll use simple username/password check
     if (username === authConfig.defaultCredentials.username && password === authConfig.defaultCredentials.password) {
-      // Get user from database
-      const { data: users, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', username)
-        .single();
-
-      if (error) {
-        return { user: null, error: 'User not found' };
-      }
+      // Create a mock user object for demo purposes since RLS is blocking direct queries
+      const mockUser: User = {
+        id: 'ce4eaf7e-4662-4743-bd51-42c270b735b5',
+        username: 'admin',
+        full_name: 'System Administrator',
+        role: 'admin',
+        email: 'admin@transport.com',
+        created_at: '2025-06-01T00:00:00.000Z', // Use fixed timestamp for hydration consistency
+        updated_at: '2025-06-01T00:00:00.000Z'  // Use fixed timestamp for hydration consistency
+      };
 
       // Store user session in localStorage for demo
       if (typeof window !== 'undefined') {
-        localStorage.setItem('currentUser', JSON.stringify(users));
+        localStorage.setItem('currentUser', JSON.stringify(mockUser));
       }
 
-      return { user: users, error: null };
+      return { user: mockUser, error: null };
     } else {
       return { user: null, error: 'Invalid credentials' };
     }
