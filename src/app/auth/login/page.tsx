@@ -117,7 +117,7 @@ export default function LoginPage() {
           </form>
 
           {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-md">
+          {/* <div className="mt-6 p-4 bg-gray-50 rounded-md">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h3>
             <div className="text-sm text-gray-600 space-y-1">
               <div>
@@ -137,14 +137,14 @@ export default function LoginPage() {
             >
               Use demo credentials
             </button>
-          </div>
+          </div> */}
         </div>
 
         {/* Footer */}
-        <div className="text-center text-sm text-gray-500">
+        {/* <div className="text-center text-sm text-gray-500">
           <p>© 2024 Vehicle Journey Management System</p>
           <p className="mt-1">Built with Next.js, Supabase & ArcGIS</p>
-        </div>
+        </div> */}
       </div>
     </div>
   );

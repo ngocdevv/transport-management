@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Truck, Layers, RefreshCw, MapPin } from 'lucide-react';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -8,6 +8,7 @@ import { useRealTimeTracking } from '@/hooks/useTracking';
 import { formatVehicleStatus, getStatusColor, formatTime } from '@/utils/formatting';
 import { MapUtils } from '@/components/maps/ArcGISMap';
 import { MAP_CONFIG } from '@/utils/constants';
+import ClientOnly from '@/components/ClientOnly';
 
 // Dynamically import ArcGIS map to avoid SSR issues
 const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
@@ -27,9 +28,14 @@ export default function LiveTrackingPage() {
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<number[]>([]);
   const [basemap, setBasemap] = useState(MAP_CONFIG.BASEMAPS.STREETS);
   const [autoZoom, setAutoZoom] = useState(true);
+  const [isBasemapDropdownOpen, setIsBasemapDropdownOpen] = useState(false);
 
   const { vehicles, loading: vehiclesLoading } = useVehicles();
-  const { currentPositions, loading: trackingLoading } = useRealTimeTracking(selectedVehicleIds);
+
+  // Memoize the selectedVehicleIds to prevent unnecessary rerenders
+  const memoizedSelectedVehicleIds = useMemo(() => selectedVehicleIds, [selectedVehicleIds.join(',')]);
+
+  const { currentPositions, loading: trackingLoading } = useRealTimeTracking(memoizedSelectedVehicleIds);
 
   // Initialize with all active vehicles selected
   useEffect(() => {
@@ -41,60 +47,75 @@ export default function LiveTrackingPage() {
     }
   }, [vehicles, vehiclesLoading, selectedVehicleIds]);
 
-  // Update map with vehicle positions
+  // Update map with vehicle positions - use requestAnimationFrame for better performance
   useEffect(() => {
-    if (!mapView || currentPositions.size === 0) return;
+    if (!mapView || !mapView.map || currentPositions.size === 0) return;
 
-    // Clear existing vehicle markers
-    MapUtils.clearLayer(mapView, 'vehicles');
+    const animationFrameId = requestAnimationFrame(() => {
+      try {
+        // Clear existing vehicle markers
+        MapUtils.clearLayer(mapView, 'vehicles');
 
-    // Add current vehicle positions
-    currentPositions.forEach((position, vehicleId) => {
-      const vehicle = vehicles.find(v => v.id === vehicleId);
-      if (vehicle && position.location?.coordinates) {
-        MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
+        // Add current vehicle positions
+        currentPositions.forEach((position, vehicleId) => {
+          const vehicle = vehicles.find(v => v.id === vehicleId);
+          if (vehicle && position.location?.coordinates) {
+            MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
+          }
+        });
+
+        // Auto zoom to fit all vehicles if enabled
+        if (autoZoom && currentPositions.size > 0) {
+          MapUtils.zoomToLayer(mapView, 'vehicles');
+        }
+      } catch (error) {
+        console.error('Error updating map:', error);
       }
     });
 
-    // Auto zoom to fit all vehicles if enabled
-    if (autoZoom && currentPositions.size > 0) {
-      MapUtils.zoomToLayer(mapView, 'vehicles');
-    }
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
   }, [mapView, currentPositions, vehicles, autoZoom]);
 
-  const handleMapLoad = (view: any) => {
+  const handleMapLoad = useCallback((view: any) => {
     setMapView(view);
-  };
+  }, []);
 
-  const toggleVehicleSelection = (vehicleId: number) => {
+  const toggleVehicleSelection = useCallback((vehicleId: number) => {
     setSelectedVehicleIds(prev =>
       prev.includes(vehicleId)
         ? prev.filter(id => id !== vehicleId)
         : [...prev, vehicleId]
     );
-  };
+  }, []);
 
-  const handleBasemapChange = (newBasemap: string) => {
+  const handleBasemapChange = useCallback((newBasemap: string) => {
     setBasemap(newBasemap);
-    if (mapView) {
+    setIsBasemapDropdownOpen(false);
+    if (mapView && mapView.map) {
       MapUtils.changeBasemap(mapView, newBasemap);
     }
-  };
+  }, [mapView]);
 
-  const selectAllVehicles = () => {
+  const selectAllVehicles = useCallback(() => {
     setSelectedVehicleIds(vehicles.map(v => v.id));
-  };
+  }, [vehicles]);
 
-  const deselectAllVehicles = () => {
+  const deselectAllVehicles = useCallback(() => {
     setSelectedVehicleIds([]);
-  };
+  }, []);
 
-  const selectActiveVehicles = () => {
+  const selectActiveVehicles = useCallback(() => {
     const activeIds = vehicles
       .filter(v => v.status === 'active')
       .map(v => v.id);
     setSelectedVehicleIds(activeIds);
-  };
+  }, [vehicles]);
+
+  const toggleBasemapDropdown = useCallback(() => {
+    setIsBasemapDropdownOpen(prev => !prev);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -203,37 +224,40 @@ export default function LiveTrackingPage() {
                 {/* Basemap Selector */}
                 <div className="relative">
                   <button
+                    onClick={toggleBasemapDropdown}
                     className="flex items-center space-x-1 px-3 py-1 bg-white border border-gray-300 rounded-md text-sm"
                   >
                     <Layers className="h-4 w-4 text-gray-500" />
                     <span>Basemap</span>
                   </button>
-                  <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-10 hidden group-hover:block">
-                    <button
-                      onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.STREETS)}
-                      className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.STREETS ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                    >
-                      Streets
-                    </button>
-                    <button
-                      onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.SATELLITE)}
-                      className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.SATELLITE ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                    >
-                      Satellite
-                    </button>
-                    <button
-                      onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.HYBRID)}
-                      className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.HYBRID ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                    >
-                      Hybrid
-                    </button>
-                    <button
-                      onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.TOPO)}
-                      className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.TOPO ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                    >
-                      Topographic
-                    </button>
-                  </div>
+                  {isBasemapDropdownOpen && (
+                    <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-10">
+                      <button
+                        onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.STREETS)}
+                        className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.STREETS ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        Streets
+                      </button>
+                      <button
+                        onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.SATELLITE)}
+                        className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.SATELLITE ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        Satellite
+                      </button>
+                      <button
+                        onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.HYBRID)}
+                        className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.HYBRID ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        Hybrid
+                      </button>
+                      <button
+                        onClick={() => handleBasemapChange(MAP_CONFIG.BASEMAPS.TOPO)}
+                        className={`flex w-full px-4 py-2 text-sm text-left ${basemap === MAP_CONFIG.BASEMAPS.TOPO ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        Topographic
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Auto Zoom Toggle */}
@@ -251,7 +275,11 @@ export default function LiveTrackingPage() {
                 {/* Refresh Button */}
                 <button
                   className="flex items-center space-x-1 px-3 py-1 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50"
-                  onClick={() => MapUtils.zoomToLayer(mapView, 'vehicles')}
+                  onClick={() => {
+                    if (mapView && mapView.map) {
+                      MapUtils.zoomToLayer(mapView, 'vehicles');
+                    }
+                  }}
                 >
                   <RefreshCw className="h-4 w-4 text-gray-500" />
                 </button>
@@ -259,7 +287,16 @@ export default function LiveTrackingPage() {
             </div>
 
             <div className="h-[600px]">
-              <ArcGISMap onMapLoad={handleMapLoad} />
+              <ClientOnly fallback={
+                <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="text-gray-600">Loading map...</div>
+                  </div>
+                </div>
+              }>
+                <ArcGISMap onMapLoad={handleMapLoad} key="tracking-map-component" />
+              </ClientOnly>
             </div>
           </div>
         </div>
