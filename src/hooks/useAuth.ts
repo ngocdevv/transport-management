@@ -15,10 +15,10 @@ export function useAuth() {
     setLoading(false);
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const result = await signIn(username, password);
+      const result = await signIn(email, password);
       if (result.user) {
         setUser(result.user);
         return { success: true, error: null };
