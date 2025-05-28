@@ -67,6 +67,13 @@ function LiveTrackingPage() {
   const toggleLiveTracking = useCallback(() => {
     if (!selectedVehicleId) return;
 
+    // Check if vehicle is active before enabling live tracking
+    const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+    if (selectedVehicle && selectedVehicle.status !== 'active') {
+      // Don't allow demo mode for inactive vehicles
+      return;
+    }
+
     setLiveTrackingVehicles(prev => {
       const newSet = new Set(prev);
       if (newSet.has(selectedVehicleId)) {
@@ -76,7 +83,7 @@ function LiveTrackingPage() {
       }
       return newSet;
     });
-  }, [selectedVehicleId]);
+  }, [selectedVehicleId, vehicles]);
 
   // Memoize recent updates to prevent unnecessary re-renders
   const recentUpdates = useMemo(() => {
@@ -178,8 +185,15 @@ function LiveTrackingPage() {
                     className={`flex items-center space-x-1 px-3 py-1 border rounded-md text-sm ${isLiveTracking
                       ? 'bg-green-50 border-green-300 text-green-700'
                       : 'bg-white border-gray-300 text-gray-700'
-                      }`}
-                    title={isLiveTracking ? "Disable demo mode" : "Enable demo mode"}
+                      } ${vehicles.find(v => v.id === selectedVehicleId)?.status !== 'active' && !isLiveTracking
+                        ? 'opacity-50 cursor-not-allowed'
+                        : ''}`}
+                    title={isLiveTracking
+                      ? "Disable demo mode"
+                      : vehicles.find(v => v.id === selectedVehicleId)?.status === 'active'
+                        ? "Enable demo mode"
+                        : "Vehicle must be active to enable demo mode"}
+                    disabled={!isLiveTracking && vehicles.find(v => v.id === selectedVehicleId)?.status !== 'active'}
                   >
                     {isLiveTracking ? (
                       <>
