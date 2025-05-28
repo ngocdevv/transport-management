@@ -20,6 +20,7 @@ export async function signIn(
       password,
     });
 
+
     if (error) {
       console.error("Authentication error:", error.message);
       return { user: null, error: error.message };
