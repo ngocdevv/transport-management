@@ -1,13 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import { Truck, MapPin, Route, Activity } from 'lucide-react';
-import { useVehicles } from '@/hooks/useVehicles';
 import { useRealTimeTracking } from '@/hooks/useTracking';
+import { useVehicles } from '@/hooks/useVehicles';
 import { formatVehicleStatus, getStatusColor } from '@/utils/formatting';
-import ClientOnly from '@/components/ClientOnly';
-import React from 'react';
+import { Activity, MapPin, Route, Truck } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 // Memoized statistics card to prevent unnecessary re-renders

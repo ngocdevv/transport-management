@@ -1,51 +1,20 @@
 'use client';
 
 import Map from '@/components/maps/Map';
+import UpdateListItem from '@/components/vehicles/UpdateListItem';
+import VehicleSelector from '@/components/vehicles/VehicleSelector';
 import { useRealTimeTracking } from '@/hooks/useTracking';
 import { useVehicles } from '@/hooks/useVehicles';
 import { MAP_CONFIG } from '@/utils/constants';
-import { formatTime, formatVehicleStatus, getStatusColor } from '@/utils/formatting';
 import { Layers, MapPin, RefreshCw } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import VehicleSelector from '@/components/vehicles/VehicleSelector';
-
-// Memoized update list item
-const UpdateListItem = memo(({ vehicle, position }: { vehicle: any; position: any }) => (
-  <div className="flex items-center p-2 border-b border-gray-100">
-    <div className="flex-shrink-0 mr-3">
-      <div className="bg-blue-100 p-2 rounded-full">
-        <MapPin className="h-4 w-4 text-blue-600" />
-      </div>
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-medium text-gray-900 truncate">
-        {vehicle.license_plate}
-      </p>
-      <div className="flex text-xs text-gray-500">
-        <p>
-          {new Date(position.timestamp).toLocaleTimeString()} •&nbsp;
-        </p>
-        <p>
-          Speed: {position.speed ? `${position.speed.toFixed(1)} km/h` : 'N/A'}
-        </p>
-      </div>
-    </div>
-    <div className="text-xs text-gray-500">
-      {position.location.coordinates[1].toFixed(5)}, {position.location.coordinates[0].toFixed(5)}
-    </div>
-  </div>
-));
-
-UpdateListItem.displayName = 'UpdateListItem';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 function LiveTrackingPage() {
-  const [mapView, setMapView] = useState<any>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [basemap, setBasemap] = useState(MAP_CONFIG.BASEMAPS.STREETS);
   const [autoZoom, setAutoZoom] = useState(true);
   const [isBasemapDropdownOpen, setIsBasemapDropdownOpen] = useState(false);
-  const mapInitialized = useRef(false);
-
+  const [isLiveTracking, setIsLiveTracking] = useState(true);
   const { vehicles, loading: vehiclesLoading } = useVehicles();
 
   // Prepare vehicle ID for the tracking hook
@@ -68,12 +37,6 @@ function LiveTrackingPage() {
     }
   }, [vehicles, vehiclesLoading, selectedVehicleId]);
 
-  const handleMapLoad = useCallback((view: any) => {
-    if (!mapInitialized.current) {
-      mapInitialized.current = true;
-      setMapView(view);
-    }
-  }, []);
 
   const handleVehicleSelect = useCallback((vehicleId: number) => {
     setSelectedVehicleId(vehicleId);
@@ -82,10 +45,7 @@ function LiveTrackingPage() {
   const handleBasemapChange = useCallback((newBasemap: string) => {
     setBasemap(newBasemap);
     setIsBasemapDropdownOpen(false);
-    if (mapView && mapView.map) {
-      // Implementation for changing basemap would go here
-    }
-  }, [mapView]);
+  }, []);
 
   const toggleBasemapDropdown = useCallback(() => {
     setIsBasemapDropdownOpen(prev => !prev);
@@ -213,9 +173,9 @@ function LiveTrackingPage() {
             <div className="h-[600px]">
               <Map
                 selectedVehicleId={selectedVehicleId}
-                onSelectVehicle={handleVehicleSelect}
                 mode="tracking"
                 key={`map-${selectedVehicleId}`}
+                isLiveTracking={isLiveTracking}
               />
             </div>
           </div>

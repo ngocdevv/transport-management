@@ -39,7 +39,7 @@ const navigationItems = [
   },
   {
     name: 'Journey History',
-    href: '/dashboard/tracking/history',
+    href: '/dashboard/history',
     icon: Route,
     permission: 'canViewAllVehicles'
   },

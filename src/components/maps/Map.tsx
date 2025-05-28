@@ -6,12 +6,12 @@ import { useVehicleData, useVehicleHistoryData } from '@/hooks/useVehicleData';
 
 interface MapProps {
   selectedVehicleId?: number | null;
-  onSelectVehicle?: (id: number) => void;
   mode?: 'tracking' | 'history';
   dateRange?: { start: Date, end: Date };
+  isLiveTracking?: boolean;
 }
 
-const Map = ({ selectedVehicleId, onSelectVehicle, mode = 'tracking', dateRange }: MapProps) => {
+const Map = ({ selectedVehicleId, mode = 'tracking', dateRange }: MapProps) => {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const [isClient, setIsClient] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
