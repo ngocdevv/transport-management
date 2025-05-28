@@ -6,8 +6,6 @@ const nextConfig: NextConfig = {
   experimental: {
     // This helps with hydration mismatches from browser extensions
     scrollRestoration: true,
-    // Add better error isolation for hydration errors
-    esmExternals: 'loose',
   },
   // Suppress specific console errors in production to prevent hydration warnings
   onDemandEntries: {

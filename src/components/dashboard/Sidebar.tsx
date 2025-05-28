@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { checkPermission } from '@/lib/auth';
+import React from 'react';
 
 const navigationItems = [
   {
@@ -62,13 +63,47 @@ const navigationItems = [
   }
 ];
 
-export default function Sidebar() {
+// Memoized NavLink component to prevent unnecessary re-renders
+const NavLink = React.memo(({
+  item,
+  isActive,
+  isCollapsed
+}: {
+  item: typeof navigationItems[0],
+  isActive: boolean,
+  isCollapsed: boolean
+}) => (
+  <Link
+    href={item.href}
+    className={`flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
+      ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
+      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+      }`}
+    title={isCollapsed ? item.name : undefined}
+    prefetch={true}
+  >
+    <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
+    {!isCollapsed && <span>{item.name}</span>}
+  </Link>
+));
+
+NavLink.displayName = 'NavLink';
+
+const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const filteredNavigation = navigationItems.filter(item =>
-    !item.permission || checkPermission(item.permission as any)
+  const toggleCollapse = useCallback(() => {
+    setIsCollapsed(prev => !prev);
+  }, []);
+
+  // Memoize filtered navigation to prevent recalculation on every render
+  const filteredNavigation = useMemo(() =>
+    navigationItems.filter(item =>
+      !item.permission || checkPermission(item.permission as any)
+    ),
+    [/* depends only on user permissions which don't change during session */]
   );
 
   return (
@@ -89,7 +124,7 @@ export default function Sidebar() {
             </div>
           )}
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={toggleCollapse}
             className="p-1 rounded-md hover:bg-gray-100 transition-colors"
           >
             {isCollapsed ? (
@@ -108,18 +143,12 @@ export default function Sidebar() {
             (item.href !== '/dashboard' && pathname.startsWith(item.href));
 
           return (
-            <Link
+            <NavLink
               key={item.name}
-              href={item.href}
-              className={`flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
-                ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              title={isCollapsed ? item.name : undefined}
-            >
-              <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-              {!isCollapsed && <span>{item.name}</span>}
-            </Link>
+              item={item}
+              isActive={isActive}
+              isCollapsed={isCollapsed}
+            />
           );
         })}
       </nav>
@@ -144,4 +173,6 @@ export default function Sidebar() {
       )}
     </div>
   );
-} 
+};
+
+export default React.memo(Sidebar); 

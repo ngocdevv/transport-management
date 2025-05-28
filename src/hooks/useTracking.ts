@@ -323,6 +323,12 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
     return trackPoints[currentIndex] || null;
   }, [trackPoints, currentIndex]);
 
+  // Calculate progress as a percentage
+  const progress = useMemo(() => {
+    if (trackPoints.length <= 1) return 0;
+    return (currentIndex / (trackPoints.length - 1)) * 100;
+  }, [currentIndex, trackPoints.length]);
+
   return {
     currentIndex,
     currentTime,
@@ -336,6 +342,7 @@ export function useJourneyPlayback(trackPoints: TrackPoint[]) {
     seekTo,
     seekToTime,
     setPlaybackSpeed,
-    getCurrentPosition
+    getCurrentPosition,
+    progress
   };
 } 

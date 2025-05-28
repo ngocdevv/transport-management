@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import dynamic from 'next/dynamic';
 import { Truck, Layers, RefreshCw, MapPin } from 'lucide-react';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -11,6 +11,7 @@ import { MAP_CONFIG } from '@/utils/constants';
 import ClientOnly from '@/components/ClientOnly';
 
 // Dynamically import ArcGIS map to avoid SSR issues
+// Use explicit key to ensure proper component mounting/unmounting
 const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
   ssr: false,
   loading: () => (
@@ -23,17 +24,97 @@ const ArcGISMap = dynamic(() => import('@/components/maps/ArcGISMap'), {
   )
 });
 
-export default function LiveTrackingPage() {
+// Memoized vehicle list item to prevent unnecessary re-renders
+const VehicleListItem = memo(({
+  vehicle,
+  position,
+  isSelected,
+  onToggle
+}: {
+  vehicle: any;
+  position: any;
+  isSelected: boolean;
+  onToggle: () => void
+}) => (
+  <div
+    className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${isSelected
+      ? 'border-blue-500 bg-blue-50'
+      : 'border-gray-200 hover:bg-gray-50'
+      }`}
+    onClick={onToggle}
+  >
+    <div className="flex items-center space-x-3">
+      <div className={`p-2 rounded-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+        <Truck className={`h-4 w-4 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-gray-900">
+          {vehicle.license_plate}
+        </p>
+        <p className="text-xs text-gray-500">
+          {vehicle.model || 'Unknown Model'}
+        </p>
+      </div>
+    </div>
+    <div className="text-right">
+      <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
+        {formatVehicleStatus(vehicle.status)}
+      </span>
+      {position && (
+        <p className="text-xs text-gray-400 mt-1">
+          Last update: {formatTime(position.timestamp)}
+        </p>
+      )}
+    </div>
+  </div>
+));
+
+VehicleListItem.displayName = 'VehicleListItem';
+
+// Memoized update list item
+const UpdateListItem = memo(({ vehicle, position }: { vehicle: any; position: any }) => (
+  <div className="flex items-center p-2 border-b border-gray-100">
+    <div className="flex-shrink-0 mr-3">
+      <div className="bg-blue-100 p-2 rounded-full">
+        <Truck className="h-4 w-4 text-blue-600" />
+      </div>
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium text-gray-900 truncate">
+        {vehicle.license_plate}
+      </p>
+      <div className="flex text-xs text-gray-500">
+        <p>
+          {new Date(position.timestamp).toLocaleTimeString()} •&nbsp;
+        </p>
+        <p>
+          Speed: {position.speed ? `${position.speed.toFixed(1)} km/h` : 'N/A'}
+        </p>
+      </div>
+    </div>
+    <div className="text-xs text-gray-500">
+      {position.location.coordinates[1].toFixed(5)}, {position.location.coordinates[0].toFixed(5)}
+    </div>
+  </div>
+));
+
+UpdateListItem.displayName = 'UpdateListItem';
+
+function LiveTrackingPage() {
   const [mapView, setMapView] = useState<any>(null);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<number[]>([]);
   const [basemap, setBasemap] = useState(MAP_CONFIG.BASEMAPS.STREETS);
   const [autoZoom, setAutoZoom] = useState(true);
   const [isBasemapDropdownOpen, setIsBasemapDropdownOpen] = useState(false);
+  const mapInitialized = useRef(false);
 
   const { vehicles, loading: vehiclesLoading } = useVehicles();
 
   // Memoize the selectedVehicleIds to prevent unnecessary rerenders
-  const memoizedSelectedVehicleIds = useMemo(() => selectedVehicleIds, [selectedVehicleIds.join(',')]);
+  const memoizedSelectedVehicleIds = useMemo(() =>
+    selectedVehicleIds,
+    [selectedVehicleIds.join(',')]
+  );
 
   const { currentPositions, loading: trackingLoading } = useRealTimeTracking(memoizedSelectedVehicleIds);
 
@@ -79,7 +160,10 @@ export default function LiveTrackingPage() {
   }, [mapView, currentPositions, vehicles, autoZoom]);
 
   const handleMapLoad = useCallback((view: any) => {
-    setMapView(view);
+    if (!mapInitialized.current) {
+      mapInitialized.current = true;
+      setMapView(view);
+    }
   }, []);
 
   const toggleVehicleSelection = useCallback((vehicleId: number) => {
@@ -116,6 +200,19 @@ export default function LiveTrackingPage() {
   const toggleBasemapDropdown = useCallback(() => {
     setIsBasemapDropdownOpen(prev => !prev);
   }, []);
+
+  // Memoize recent updates to prevent unnecessary re-renders
+  const recentUpdates = useMemo(() => {
+    return Array.from(currentPositions.entries())
+      .sort((a, b) => new Date(b[1].timestamp).getTime() - new Date(a[1].timestamp).getTime())
+      .slice(0, 10)
+      .map(([vehicleId, position]) => {
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (!vehicle) return null;
+        return { vehicle, position };
+      })
+      .filter((item): item is { vehicle: any; position: any } => item !== null);
+  }, [currentPositions, vehicles]);
 
   return (
     <div className="space-y-6">
@@ -169,38 +266,13 @@ export default function LiveTrackingPage() {
                   const isSelected = selectedVehicleIds.includes(vehicle.id);
 
                   return (
-                    <div
+                    <VehicleListItem
                       key={vehicle.id}
-                      className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${isSelected
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:bg-gray-50'
-                        }`}
-                      onClick={() => toggleVehicleSelection(vehicle.id)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-2 rounded-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                          <Truck className={`h-4 w-4 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {vehicle.license_plate}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {vehicle.model || 'Unknown Model'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
-                          {formatVehicleStatus(vehicle.status)}
-                        </span>
-                        {position && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Last update: {formatTime(position.timestamp)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                      vehicle={vehicle}
+                      position={position}
+                      isSelected={isSelected}
+                      onToggle={() => toggleVehicleSelection(vehicle.id)}
+                    />
                   );
                 })}
               </div>
@@ -310,41 +382,15 @@ export default function LiveTrackingPage() {
         </div>
         <div className="p-4">
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {Array.from(currentPositions.entries())
-              .sort((a, b) => new Date(b[1].timestamp).getTime() - new Date(a[1].timestamp).getTime())
-              .slice(0, 10)
-              .map(([vehicleId, position]) => {
-                const vehicle = vehicles.find(v => v.id === vehicleId);
-                if (!vehicle) return null;
-
-                return (
-                  <div key={`${vehicleId}-${position.timestamp}`} className="flex items-center p-2 border-b border-gray-100">
-                    <div className="flex-shrink-0 mr-3">
-                      <div className="bg-blue-100 p-2 rounded-full">
-                        <Truck className="h-4 w-4 text-blue-600" />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {vehicle.license_plate}
-                      </p>
-                      <div className="flex text-xs text-gray-500">
-                        <p>
-                          {new Date(position.timestamp).toLocaleTimeString()} •&nbsp;
-                        </p>
-                        <p>
-                          Speed: {position.speed ? `${position.speed.toFixed(1)} km/h` : 'N/A'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {position.location.coordinates[1].toFixed(5)}, {position.location.coordinates[0].toFixed(5)}
-                    </div>
-                  </div>
-                );
-              })}
-
-            {currentPositions.size === 0 && (
+            {recentUpdates.length > 0 ? (
+              recentUpdates.map(({ vehicle, position }) => (
+                <UpdateListItem
+                  key={`${vehicle.id}-${position.timestamp}`}
+                  vehicle={vehicle}
+                  position={position}
+                />
+              ))
+            ) : (
               <div className="text-center py-4 text-gray-500">
                 No recent updates available
               </div>
@@ -354,4 +400,6 @@ export default function LiveTrackingPage() {
       </div>
     </div>
   );
-} 
+}
+
+export default memo(LiveTrackingPage); 

@@ -177,23 +177,41 @@ export function useVehicleTypes() {
 }
 
 export function useGPSDevices() {
-  const [devices, setDevices] = useState<GPSDevice[]>([]);
+  const [devices, setDevices] = useState<(GPSDevice & { vehicle_id?: number | null })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDevices = async () => {
       try {
+        // Get devices with information about which vehicle they're assigned to
         const { data, error: supabaseError } = await supabase
           .from('gps_devices')
-          .select('*')
+          .select(`
+            *,
+            vehicles!gps_devices_id_fkey(id)
+          `)
           .order('created_at', { ascending: false });
 
         if (supabaseError) {
           throw supabaseError;
         }
 
-        setDevices(data || []);
+        // Process the data to add vehicle_id property
+        const processedData = (data || []).map(device => {
+          const vehicleInfo = device.vehicles && device.vehicles.length > 0
+            ? device.vehicles[0]
+            : null;
+
+          return {
+            ...device,
+            vehicle_id: vehicleInfo ? vehicleInfo.id : null,
+            // @ts-ignore - Remove the vehicles property as we've extracted what we need
+            vehicles: undefined
+          };
+        });
+
+        setDevices(processedData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch GPS devices');
       } finally {

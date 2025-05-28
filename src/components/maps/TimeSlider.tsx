@@ -181,7 +181,7 @@ export default function TimeSlider({
       {/* Progress Info */}
       <div className="flex justify-between text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
         <span>
-          Progress: {progress.toFixed(1)}%
+          Progress: {progress !== undefined && progress !== null ? progress.toFixed(1) : '0.0'}%
         </span>
         <span>
           Remaining: {Math.ceil(remainingDuration / (1000 * 60))} min

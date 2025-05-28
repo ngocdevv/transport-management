@@ -5,14 +5,18 @@ import { Plus, Filter, Search, Truck, Edit, Trash2, AlertTriangle } from 'lucide
 import { useVehicles, useVehicleTypes, useGPSDevices } from '@/hooks/useVehicles';
 import { Vehicle } from '@/lib/types';
 import { formatVehicleStatus, getStatusColor, formatDate } from '@/utils/formatting';
+import VehicleModal from '@/components/vehicles/VehicleModal';
 
 export default function VehiclesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<number | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const { vehicles, loading, deleteVehicle } = useVehicles();
+  const { vehicles, loading, deleteVehicle, createVehicle, updateVehicle } = useVehicles();
   const { vehicleTypes } = useVehicleTypes();
   const { devices } = useGPSDevices();
 
@@ -32,13 +36,50 @@ export default function VehiclesPage() {
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  // Open modal for adding a new vehicle
+  const handleAddVehicle = () => {
+    setSelectedVehicle(null);
+    setIsModalOpen(true);
+  };
+
+  // Open modal for editing a vehicle
+  const handleEditVehicle = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle);
+    setIsModalOpen(true);
+  };
+
+  // Handle save (create or update)
+  const handleSaveVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>) => {
+    setIsSaving(true);
+    try {
+      if (selectedVehicle) {
+        // Update existing vehicle
+        await updateVehicle(selectedVehicle.id, vehicleData);
+      } else {
+        // Create new vehicle
+        await createVehicle(vehicleData);
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Error saving vehicle:', error);
+      alert('Failed to save vehicle. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Handle delete
   const handleDeleteConfirm = async (id: number) => {
-    const result = await deleteVehicle(id);
-    if (result.success) {
-      setShowConfirmDelete(null);
-    } else {
-      alert('Failed to delete: ' + result.error);
+    try {
+      const result = await deleteVehicle(id);
+      if (result.success) {
+        setShowConfirmDelete(null);
+      } else {
+        alert('Failed to delete: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error deleting vehicle:', error);
+      alert('Failed to delete vehicle. Please try again.');
     }
   };
 
@@ -50,7 +91,10 @@ export default function VehiclesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Vehicles</h1>
           <p className="text-gray-600">Manage your fleet</p>
         </div>
-        <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+        <button
+          onClick={handleAddVehicle}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Vehicle
         </button>
@@ -231,7 +275,10 @@ export default function VehiclesPage() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-end space-x-3">
-                          <button className="text-indigo-600 hover:text-indigo-900">
+                          <button
+                            onClick={() => handleEditVehicle(vehicle)}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
@@ -250,6 +297,17 @@ export default function VehiclesPage() {
           </div>
         )}
       </div>
+
+      {/* Vehicle Modal */}
+      <VehicleModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveVehicle}
+        vehicleTypes={vehicleTypes}
+        devices={devices}
+        vehicle={selectedVehicle}
+        isLoading={isSaving}
+      />
     </div>
   );
 } 
