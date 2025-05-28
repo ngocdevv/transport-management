@@ -36,7 +36,7 @@ function LiveTrackingPage() {
   const { simulatedVehicles, totalDistance } = useVehicleSimulation(
     isLiveTracking,
     selectedVehicleId ? vehicles.filter(v => v.id === selectedVehicleId) : [],
-    true // Force Ho Chi Minh City area
+    false // Use actual vehicle position instead of forcing Ho Chi Minh City area
   );
 
   // Initialize with first active vehicle selected
@@ -161,7 +161,7 @@ function LiveTrackingPage() {
                       Tracking vehicle: {vehicles.find(v => v.id === selectedVehicleId)?.license_plate || ''}
                       {isLiveTracking && (
                         <span className="text-green-600 ml-2 text-xs font-medium">
-                          • Demo Mode (Ho Chi Minh City)
+                          • Demo Mode
                         </span>
                       )}
                     </>
@@ -287,7 +287,7 @@ function LiveTrackingPage() {
                     </div>
                     <div className="flex justify-between mt-1">
                       <span className="text-gray-600">Location:</span>
-                      <span className="font-medium">Ho Chi Minh City</span>
+                      <span className="font-medium">Current Location</span>
                     </div>
                   </div>
                 </div>
@@ -327,7 +327,7 @@ function LiveTrackingPage() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">Simulation Summary</h2>
-            <p className="text-sm text-gray-600">Vehicle movement in Ho Chi Minh City (Demo Mode)</p>
+            <p className="text-sm text-gray-600">Vehicle movement simulation (Demo Mode)</p>
           </div>
           <div className="p-4">
             <div className="grid grid-cols-1 gap-4">
@@ -363,7 +363,7 @@ function LiveTrackingPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Location:</span>
-                    <span className="font-medium">Ho Chi Minh City</span>
+                    <span className="font-medium">Current Location</span>
                   </div>
                 </div>
               </div>

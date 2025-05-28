@@ -42,7 +42,7 @@ const Map = ({ selectedVehicleId, mode = 'tracking', dateRange, isLiveTracking =
   const { simulatedVehicles } = useVehicleSimulation(
     Boolean(isLiveTracking && mode === 'tracking'),
     filteredBaseVehicles,
-    true // Force Ho Chi Minh City area
+    false // Do not force Ho Chi Minh City area, use actual vehicle position
   );
 
   // Use simulated vehicles when in live tracking mode, otherwise use the base vehicles

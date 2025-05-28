@@ -55,21 +55,41 @@ export function useVehicleSimulation(
 
       setSimulatedVehicles(
         vehicles.map((vehicle, index) => {
-          // Use vehicle's last position or force to HCMC area if specified
+          // First try to use the vehicle's actual position from track_points or live_vehicle_positions
+          // Then fallback to forcing HCMC area if specified
           let initialCoordinates: [number, number] = [0, 0];
 
-          if (forceHCMCArea) {
+          // Check if the vehicle has current_position (from live_vehicle_positions)
+          if (vehicle.current_position?.coordinates) {
+            initialCoordinates = vehicle.current_position.coordinates;
+          }
+          // Check if the vehicle has a location property (from track_points)
+          else if (vehicle.location?.coordinates) {
+            initialCoordinates = vehicle.location.coordinates;
+          }
+          // Or check if the vehicle has last_position property
+          else if (vehicle.last_position?.coordinates) {
+            initialCoordinates = vehicle.last_position.coordinates;
+          }
+          // If we still don't have coordinates and forceHCMCArea is set, use HCMC area
+          else if (forceHCMCArea) {
             // Place vehicle in Ho Chi Minh City area with some randomness
             const randomOffset = () => (Math.random() - 0.5) * 0.05; // Small random offset
             initialCoordinates = [
               HCMC_BOUNDS.center[0] + randomOffset(),
               HCMC_BOUNDS.center[1] + randomOffset()
             ];
-          } else if (vehicle.last_position?.coordinates) {
-            initialCoordinates = vehicle.last_position.coordinates;
           } else {
             // Default to HCMC center if no coordinates available
             initialCoordinates = [...HCMC_BOUNDS.center] as [number, number];
+          }
+
+          // Ensure coordinates are within HCMC bounds if forceHCMCArea is true
+          if (forceHCMCArea) {
+            initialCoordinates = [
+              Math.min(Math.max(initialCoordinates[0], HCMC_BOUNDS.south), HCMC_BOUNDS.north),
+              Math.min(Math.max(initialCoordinates[1], HCMC_BOUNDS.west), HCMC_BOUNDS.east)
+            ];
           }
 
           return {
