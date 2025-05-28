@@ -1,244 +1,320 @@
-'use client';
+"use client";
 
-import { useRealTimeTracking } from '@/hooks/useTracking';
-import { useVehicles } from '@/hooks/useVehicles';
-import { formatVehicleStatus, getStatusColor } from '@/utils/formatting';
-import { Activity, MapPin, Route, Truck } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { useVehicles } from "@/hooks/useVehicles";
+import {
+  Calendar,
+  Download,
+  BarChart3,
+  PieChart as PieChartIcon,
+} from "lucide-react";
+import { CHART_COLORS } from "@/utils/constants";
 
+export default function DashboardPage() {
+  const [dateRange, setDateRange] = useState<"week" | "month" | "year">("week");
+  const { vehicles, loading } = useVehicles();
 
-// Memoized statistics card to prevent unnecessary re-renders
-const StatCard = React.memo(({
-  title,
-  value,
-  icon: Icon,
-  color
-}: {
-  title: string;
-  value: number;
-  icon: any;
-  color: string;
-}) => (
-  <div className="bg-white rounded-lg shadow p-6">
-    <div className="flex items-center">
-      <div className={`bg-${color}-100 p-3 rounded-full`}>
-        <Icon className={`h-6 w-6 text-${color}-600`} />
-      </div>
-      <div className="ml-4">
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
-      </div>
-    </div>
-  </div>
-));
+  // Calculate vehicle status distribution for pie chart
+  const vehicleStatusData = [
+    {
+      name: "Active",
+      value: vehicles.filter((v) => v.status === "active").length,
+      color: CHART_COLORS.SUCCESS,
+    },
+    {
+      name: "Maintenance",
+      value: vehicles.filter((v) => v.status === "maintenance").length,
+      color: CHART_COLORS.WARNING,
+    },
+    {
+      name: "Inactive",
+      value: vehicles.filter((v) => v.status === "inactive").length,
+      color: CHART_COLORS.DANGER,
+    },
+  ];
 
-StatCard.displayName = 'StatCard';
+  // Mock data for vehicle type distribution
+  const vehicleTypeData = Array.from(
+    vehicles.reduce((acc, vehicle) => {
+      const typeName = vehicle.vehicle_type?.type_name || "Unknown";
+      acc.set(typeName, (acc.get(typeName) || 0) + 1);
+      return acc;
+    }, new Map<string, number>())
+  ).map(([name, value]) => ({ name, value }));
 
-// Memoized list item component to prevent unnecessary re-renders
-const VehicleListItem = React.memo(({ vehicle }: { vehicle: any }) => (
-  <div key={vehicle.id} className="flex items-center justify-between p-3 border-b border-gray-100">
-    <div className="flex items-center space-x-3">
-      <div className="bg-gray-100 p-2 rounded-full">
-        <Truck className="h-4 w-4 text-gray-600" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-gray-900">
-          {vehicle.license_plate}
-        </p>
-        <p className="text-xs text-gray-500">
-          {vehicle.model || 'Unknown Model'}
-        </p>
-      </div>
-    </div>
-    <span className={`text-xs font-medium ${getStatusColor(vehicle.status)}`}>
-      {formatVehicleStatus(vehicle.status)}
-    </span>
-  </div>
-));
-
-VehicleListItem.displayName = 'VehicleListItem';
-
-function DashboardPage() {
-  const [mapView, setMapView] = useState<any>(null);
-  const { vehicles, loading: vehiclesLoading } = useVehicles();
-  const mapInitialized = useRef(false);
-
-  // Memoize vehicleIds to prevent unnecessary calculations
-  const vehicleIds = useMemo(() =>
-    vehicles.map(v => v.id),
-    [vehicles]
-  );
-
-  const { currentPositions, loading: trackingLoading } = useRealTimeTracking(vehicleIds);
-
-  // Calculate statistics with memoization to prevent recalculation on every render
-  const stats = useMemo(() => ({
-    total: vehicles.length,
-    active: vehicles.filter(v => v.status === 'active').length,
-    maintenance: vehicles.filter(v => v.status === 'maintenance').length,
-    inactive: vehicles.filter(v => v.status === 'inactive').length
-  }), [vehicles]);
-
-  // Memoize callback to reduce rerenders
-  const handleMapLoad = useCallback((view: any) => {
-    if (!mapInitialized.current) {
-      mapInitialized.current = true;
-      setMapView(view);
-    }
-  }, []);
-
-  // Update map with vehicle positions - optimized to reduce rerenders
-  useEffect(() => {
-    if (!mapView || !mapView.map || currentPositions.size === 0) return;
-
-    // Use requestAnimationFrame to ensure smooth UI
-    const animationFrameId = requestAnimationFrame(() => {
-      try {
-        // Clear existing vehicle markers
-        // MapUtils.clearLayer(mapView, 'vehicles');
-
-        // Add current vehicle positions
-        currentPositions.forEach((position, vehicleId) => {
-          const vehicle = vehicles.find(v => v.id === vehicleId);
-          if (vehicle && position.location?.coordinates) {
-            // MapUtils.addVehicleMarker(mapView, vehicle, position.location.coordinates);
-          }
-        });
-      } catch (error) {
-        console.error('Error updating map:', error);
-      }
-    });
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [mapView, currentPositions, vehicles]);
-
-  // Memoize recent activity data to prevent unnecessary re-renders
-  const recentActivityData = useMemo(() => {
-    if (vehiclesLoading) return [];
-
-    return vehicles
-      .filter(v => v.status === 'active')
-      .slice(0, 5)
-      .map(vehicle => {
-        const position = currentPositions.get(vehicle.id);
-        return { vehicle, position };
-      });
-  }, [vehicles, currentPositions, vehiclesLoading]);
+  // Mock data for daily distance
+  const mockDailyDistanceData = [
+    { day: "Mon", distance: 120 },
+    { day: "Tue", distance: 180 },
+    { day: "Wed", distance: 150 },
+    { day: "Thu", distance: 210 },
+    { day: "Fri", distance: 190 },
+    { day: "Sat", distance: 95 },
+    { day: "Sun", distance: 60 },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Vehicle Journey Management System Overview</p>
-      </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Vehicles" value={stats.total} icon={Truck} color="blue" />
-        <StatCard title="Active" value={stats.active} icon={Activity} color="green" />
-        <StatCard title="Maintenance" value={stats.maintenance} icon={MapPin} color="yellow" />
-        <StatCard title="Inactive" value={stats.inactive} icon={Route} color="red" />
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Map */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Live Vehicle Tracking</h2>
-              <p className="text-sm text-gray-600">Real-time vehicle positions</p>
-            </div>
-            <div className="h-96">
-              {/* <ClientOnly fallback={
-                <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <div className="text-gray-600">Loading map...</div>
-                  </div>
-                </div>
-              }>
-                <ArcGISMap onMapLoad={handleMapLoad} key="map-component" />
-              </ClientOnly> */}
-            </div>
-          </div>
-        </div>
-
-        {/* Vehicle List */}
+      <div className="flex justify-between items-center">
         <div>
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Vehicle Status</h2>
-              <p className="text-sm text-gray-600">Current status of all vehicles</p>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">Analytics and vehicle statistics</p>
+        </div>
+        <div className="flex space-x-2">
+          <div className="relative">
+            <select
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value as any)}
+              className="border border-gray-300 rounded-md px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="week">Last Week</option>
+              <option value="month">Last Month</option>
+              <option value="year">Last Year</option>
+            </select>
+            <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          </div>
+          <button className="flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-gray-600">Loading reports...</div>
+        </div>
+      ) : (
+        <>
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Total Vehicles
+              </h3>
+              <p className="text-3xl font-bold text-blue-600">
+                {vehicles.length}
+              </p>
+              <p className="text-sm text-gray-500 mt-2">In your fleet</p>
             </div>
-            <div className="p-4">
-              {vehiclesLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <div className="text-gray-600">Loading vehicles...</div>
-                </div>
-              ) : vehicles.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No vehicles found
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
-                  {vehicles.slice(0, 10).map(vehicle => (
-                    <VehicleListItem key={vehicle.id} vehicle={vehicle} />
-                  ))}
-                  {vehicles.length > 10 && (
-                    <div className="pt-2 text-center">
-                      <a href="/dashboard/vehicles" className="text-sm text-blue-600 hover:text-blue-800">
-                        View all {vehicles.length} vehicles
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Active Rate
+              </h3>
+              <p className="text-3xl font-bold text-green-600">
+                {vehicles.length > 0
+                  ? `${Math.round(
+                      (vehicles.filter((v) => v.status === "active").length /
+                        vehicles.length) *
+                        100
+                    )}%`
+                  : "0%"}
+              </p>
+              <p className="text-sm text-gray-500 mt-2">Operational vehicles</p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Total Distance
+              </h3>
+              <p className="text-3xl font-bold text-purple-600">1,248 km</p>
+              <p className="text-sm text-gray-500 mt-2">
+                In the last {dateRange}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Journeys
+              </h3>
+              <p className="text-3xl font-bold text-yellow-600">36</p>
+              <p className="text-sm text-gray-500 mt-2">
+                In the last {dateRange}
+              </p>
             </div>
           </div>
 
-          {/* Recent Activity */}
-          <div className="bg-white rounded-lg shadow mt-6">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
-              <p className="text-sm text-gray-600">Latest vehicle updates</p>
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Status Distribution Chart */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Vehicle Status
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Current fleet status distribution
+                  </p>
+                </div>
+                <PieChartIcon className="h-5 w-5 text-gray-400" />
+              </div>
+              <div className="p-4 h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={vehicleStatusData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                    >
+                      {vehicleStatusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value) => [`${value} vehicles`, "Count"]}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-            <div className="p-4">
-              {vehiclesLoading || trackingLoading ? (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <div className="text-gray-600">Loading...</div>
+
+            {/* Vehicle Type Distribution */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Vehicle Types
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Distribution by vehicle type
+                  </p>
                 </div>
-              ) : recentActivityData.length === 0 ? (
-                <div className="text-center py-4 text-gray-500">
-                  No recent activity
+                <PieChartIcon className="h-5 w-5 text-gray-400" />
+              </div>
+              <div className="p-4 h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={vehicleTypeData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, value }) => `${name}: ${value}`}
+                    >
+                      {vehicleTypeData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            Object.values(CHART_COLORS)[
+                              index % Object.values(CHART_COLORS).length
+                            ]
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value) => [`${value} vehicles`, "Count"]}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Daily Distance Chart */}
+            <div className="bg-white rounded-lg shadow lg:col-span-2">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Daily Distance
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Total kilometers traveled per day
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {recentActivityData.map(({ vehicle, position }) => (
-                    <div key={vehicle.id} className="text-sm">
-                      <div className="font-medium">{vehicle.license_plate}</div>
-                      <div className="text-gray-500">
-                        {position ? (
-                          `Last update: ${new Date(position.timestamp).toLocaleTimeString()}`
-                        ) : (
-                          'No recent position data'
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                <BarChart3 className="h-5 w-5 text-gray-400" />
+              </div>
+              <div className="p-4 h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mockDailyDistanceData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="day" />
+                    <YAxis unit=" km" />
+                    <Tooltip
+                      formatter={(value) => [`${value} km`, "Distance"]}
+                    />
+                    <Legend />
+                    <Bar
+                      dataKey="distance"
+                      name="Distance"
+                      fill={CHART_COLORS.PRIMARY}
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+
+          {/* Report Generation Section */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Generate Custom Report
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Report Type
+                </label>
+                <select className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                  <option>Vehicle Usage</option>
+                  <option>Distance Summary</option>
+                  <option>Maintenance Report</option>
+                  <option>Fuel Consumption</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date Range
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="date"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <input
+                    type="date"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end">
+                <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                  Generate Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
-export default React.memo(DashboardPage); 
