@@ -124,37 +124,94 @@ export function useArcGIS(mapContainerId: string, mode: 'tracking' | 'history' =
     vehicleLayerRef.current.removeAll();
     routeLayerRef.current.removeAll();
 
+    // Check if we are in simulation mode (looking for vehicles with previousPositions)
+    const hasSimulatedVehicles = vehicles.some(v =>
+      v.previousPositions &&
+      Array.isArray(v.previousPositions) &&
+      v.previousPositions.length > 0
+    );
+
     vehicles.forEach(vehicle => {
-      if (!vehicle.routes || vehicle.routes.length === 0) return;
+      // Check if this is a simulated vehicle with direct coordinates
+      const isSimulatedVehicle = Boolean(
+        vehicle.coordinates &&
+        Array.isArray(vehicle.coordinates) &&
+        vehicle.coordinates.length === 2
+      );
 
-      // Create route lines
-      const paths = vehicle.routes.map((point: any) => [point.longitude, point.latitude]);
+      if (!isSimulatedVehicle && (!vehicle.routes || vehicle.routes.length === 0)) return;
 
-      const routePolyline = new Polyline({
-        paths: [paths],
-        spatialReference: { wkid: 4326 }
-      });
+      // For simulated vehicles with previous positions, draw only a single trail line
+      if (isSimulatedVehicle && vehicle.previousPositions && vehicle.previousPositions.length > 0) {
+        // For simulated vehicles with previous positions, draw a trail
+        const paths = vehicle.previousPositions.map((pos: [number, number]) => [pos[1], pos[0]]);
+        // Add current position to the path
+        paths.push([vehicle.coordinates[1], vehicle.coordinates[0]]);
 
-      const routeGraphic = new Graphic({
-        geometry: routePolyline,
-        symbol: new SimpleLineSymbol({
-          color: vehicle.color || [66, 133, 244],
-          width: 3
-        }),
-        attributes: {
-          id: vehicle.id,
-          name: vehicle.name,
-          type: "route"
+        const trailPolyline = new Polyline({
+          paths: [paths],
+          spatialReference: { wkid: 4326 }
+        });
+
+        const trailGraphic = new Graphic({
+          geometry: trailPolyline,
+          symbol: new SimpleLineSymbol({
+            color: vehicle.color || [240, 128, 128], // Light coral color for trails
+            width: 3,
+            style: "short-dash"
+          }),
+          attributes: {
+            id: `${vehicle.id}-trail`,
+            name: `${vehicle.license_plate} Trail`,
+            type: "trail"
+          }
+        });
+
+        if (routeLayerRef.current) {
+          routeLayerRef.current.add(trailGraphic);
         }
-      });
+      }
+      // For non-simulated vehicles, draw regular routes (unless we're in simulation mode)
+      else if (!isSimulatedVehicle && !hasSimulatedVehicles) {
+        // Create route lines
+        const paths = vehicle.routes.map((point: any) => [point.longitude, point.latitude]);
 
-      routeLayerRef.current.add(routeGraphic);
+        const routePolyline = new Polyline({
+          paths: [paths],
+          spatialReference: { wkid: 4326 }
+        });
 
-      // In tracking mode, only show latest position
-      // In history mode, show position based on time slider
-      let currentPosition = null;
+        const routeGraphic = new Graphic({
+          geometry: routePolyline,
+          symbol: new SimpleLineSymbol({
+            color: vehicle.color || [66, 133, 244],
+            width: 3
+          }),
+          attributes: {
+            id: vehicle.id,
+            name: vehicle.name,
+            type: "route"
+          }
+        });
 
-      if (mode === 'tracking') {
+        if (routeLayerRef.current) {
+          routeLayerRef.current.add(routeGraphic);
+        }
+      }
+
+      // Get current position
+      let currentPosition: any = null;
+
+      if (isSimulatedVehicle) {
+        // For simulated vehicles, use direct coordinates
+        currentPosition = {
+          longitude: vehicle.coordinates[1],
+          latitude: vehicle.coordinates[0],
+          speed: vehicle.speed || 0,
+          timestamp: vehicle.timestamp || new Date().toISOString(),
+          heading: vehicle.heading || 0
+        };
+      } else if (mode === 'tracking') {
         // Just use the latest position available
         currentPosition = vehicle.routes[vehicle.routes.length - 1];
       } else {
@@ -241,7 +298,7 @@ export function useArcGIS(mapContainerId: string, mode: 'tracking' | 'history' =
           symbol: vehicleSymbol,
           attributes: {
             id: vehicle.id,
-            name: vehicle.name,
+            name: vehicle.name || `Vehicle ${vehicle.id}`,
             type: "vehicle",
             speed: currentPosition.speed || 0,
             license_plate: vehicle.license_plate || 'Unknown',
@@ -249,7 +306,8 @@ export function useArcGIS(mapContainerId: string, mode: 'tracking' | 'history' =
             status: vehicle.status || 'Unknown',
             timestamp: currentPosition.timestamp || new Date().toISOString(),
             latitude: currentPosition.latitude.toFixed(5),
-            longitude: currentPosition.longitude.toFixed(5)
+            longitude: currentPosition.longitude.toFixed(5),
+            heading: currentPosition.heading || 0
           },
           popupTemplate: {
             title: "{name}",
@@ -291,6 +349,10 @@ export function useArcGIS(mapContainerId: string, mode: 'tracking' | 'history' =
                   {
                     fieldName: "longitude",
                     label: "Longitude"
+                  },
+                  {
+                    fieldName: "heading",
+                    label: "Heading"
                   }
                 ]
               }
@@ -315,12 +377,26 @@ export function useArcGIS(mapContainerId: string, mode: 'tracking' | 'history' =
     if (!viewRef.current) return;
 
     const vehicle = vehicles.find(v => v.id === vehicleId);
-    if (!vehicle || !vehicle.routes || vehicle.routes.length === 0) return;
+    if (!vehicle) return;
+
+    // Check if this is a simulated vehicle
+    const isSimulatedVehicle = Boolean(
+      vehicle.coordinates &&
+      Array.isArray(vehicle.coordinates) &&
+      vehicle.coordinates.length === 2
+    );
 
     // Find the current position
     let currentPosition = null;
 
-    if (mode === 'tracking') {
+    if (isSimulatedVehicle) {
+      currentPosition = {
+        longitude: vehicle.coordinates[1],
+        latitude: vehicle.coordinates[0]
+      };
+    } else if (!vehicle.routes || vehicle.routes.length === 0) {
+      return;
+    } else if (mode === 'tracking') {
       // Use latest position in tracking mode
       currentPosition = vehicle.routes[vehicle.routes.length - 1];
     } else {

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Truck } from 'lucide-react';
 import { formatVehicleStatus, getStatusColor, formatTime } from '@/utils/formatting';
 
@@ -10,6 +10,9 @@ interface VehicleSelectorProps {
   selectedVehicleId: number | null;
   onSelectVehicle: (vehicleId: number) => void;
   loading?: boolean;
+  simulatedVehicles?: any[];
+  isLiveTracking?: boolean;
+  liveTrackingVehicles?: Set<number>;
 }
 
 const VehicleSelector = memo(({
@@ -17,8 +20,29 @@ const VehicleSelector = memo(({
   currentPositions,
   selectedVehicleId,
   onSelectVehicle,
-  loading = false
+  loading = false,
+  simulatedVehicles = [],
+  isLiveTracking = false,
+  liveTrackingVehicles = new Set()
 }: VehicleSelectorProps) => {
+  // Create a combined map of positions including simulated data
+  const positionsMap = useMemo(() => {
+    const combinedMap = new Map(currentPositions);
+
+    // Add simulated data if in demo mode
+    if (simulatedVehicles.length > 0) {
+      simulatedVehicles.forEach(vehicle => {
+        combinedMap.set(vehicle.id, {
+          timestamp: vehicle.timestamp,
+          speed: vehicle.speed,
+          coordinates: vehicle.coordinates
+        });
+      });
+    }
+
+    return combinedMap;
+  }, [currentPositions, simulatedVehicles]);
+
   if (loading) {
     return (
       <div className="text-center py-8">
@@ -39,8 +63,10 @@ const VehicleSelector = memo(({
   return (
     <div className="space-y-3 max-h-96 overflow-y-auto">
       {vehicles.map((vehicle) => {
-        const position = currentPositions.get(vehicle.id);
+        const position = positionsMap.get(vehicle.id);
         const isSelected = selectedVehicleId === vehicle.id;
+        const vehicleHasLiveTracking = liveTrackingVehicles.has(vehicle.id);
+        const isSimulated = vehicleHasLiveTracking && simulatedVehicles.some(v => v.id === vehicle.id);
 
         return (
           <div
@@ -58,6 +84,7 @@ const VehicleSelector = memo(({
               <div>
                 <p className="text-sm font-medium text-gray-900">
                   {vehicle.license_plate}
+                  {isSimulated && <span className="ml-1 text-xs text-green-600">(Demo)</span>}
                 </p>
                 <p className="text-xs text-gray-500">
                   {vehicle.model || 'Unknown Model'}

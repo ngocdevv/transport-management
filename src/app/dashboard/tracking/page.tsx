@@ -5,8 +5,9 @@ import UpdateListItem from '@/components/vehicles/UpdateListItem';
 import VehicleSelector from '@/components/vehicles/VehicleSelector';
 import { useRealTimeTracking } from '@/hooks/useTracking';
 import { useVehicles } from '@/hooks/useVehicles';
+import { useVehicleSimulation } from '@/hooks/useVehicleSimulation';
 import { MAP_CONFIG } from '@/utils/constants';
-import { Layers, MapPin, RefreshCw } from 'lucide-react';
+import { Layers, MapPin, RefreshCw, Play, Pause, BarChart } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 function LiveTrackingPage() {
@@ -14,8 +15,14 @@ function LiveTrackingPage() {
   const [basemap, setBasemap] = useState(MAP_CONFIG.BASEMAPS.STREETS);
   const [autoZoom, setAutoZoom] = useState(true);
   const [isBasemapDropdownOpen, setIsBasemapDropdownOpen] = useState(false);
-  const [isLiveTracking, setIsLiveTracking] = useState(true);
+  const [liveTrackingVehicles, setLiveTrackingVehicles] = useState<Set<number>>(new Set());
   const { vehicles, loading: vehiclesLoading } = useVehicles();
+
+  // Check if current selected vehicle has live tracking enabled
+  const isLiveTracking = useMemo(() =>
+    selectedVehicleId ? liveTrackingVehicles.has(selectedVehicleId) : false,
+    [selectedVehicleId, liveTrackingVehicles]
+  );
 
   // Prepare vehicle ID for the tracking hook
   const vehicleIdArray = useMemo(() =>
@@ -24,6 +31,13 @@ function LiveTrackingPage() {
   );
 
   const { currentPositions, loading: trackingLoading } = useRealTimeTracking(vehicleIdArray);
+
+  // Get simulated vehicles data for demo mode
+  const { simulatedVehicles, totalDistance } = useVehicleSimulation(
+    isLiveTracking,
+    selectedVehicleId ? vehicles.filter(v => v.id === selectedVehicleId) : [],
+    true // Force Ho Chi Minh City area
+  );
 
   // Initialize with first active vehicle selected
   useEffect(() => {
@@ -36,7 +50,6 @@ function LiveTrackingPage() {
       }
     }
   }, [vehicles, vehiclesLoading, selectedVehicleId]);
-
 
   const handleVehicleSelect = useCallback((vehicleId: number) => {
     setSelectedVehicleId(vehicleId);
@@ -51,8 +64,42 @@ function LiveTrackingPage() {
     setIsBasemapDropdownOpen(prev => !prev);
   }, []);
 
+  const toggleLiveTracking = useCallback(() => {
+    if (!selectedVehicleId) return;
+
+    setLiveTrackingVehicles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(selectedVehicleId)) {
+        newSet.delete(selectedVehicleId);
+      } else {
+        newSet.add(selectedVehicleId);
+      }
+      return newSet;
+    });
+  }, [selectedVehicleId]);
+
   // Memoize recent updates to prevent unnecessary re-renders
   const recentUpdates = useMemo(() => {
+    if (isLiveTracking && simulatedVehicles.length > 0) {
+      // Use simulated data in demo mode
+      return simulatedVehicles
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 10)
+        .map(vehicle => ({
+          vehicle: vehicles.find(v => v.id === vehicle.id) || {
+            id: vehicle.id,
+            license_plate: vehicle.license_plate
+          },
+          position: {
+            timestamp: vehicle.timestamp,
+            speed: vehicle.speed,
+            coordinates: vehicle.coordinates,
+            distance: vehicle.distance
+          }
+        }));
+    }
+
+    // Use real API data
     return Array.from(currentPositions.entries())
       .sort((a, b) => new Date(b[1].timestamp).getTime() - new Date(a[1].timestamp).getTime())
       .slice(0, 10)
@@ -62,7 +109,13 @@ function LiveTrackingPage() {
         return { vehicle, position };
       })
       .filter((item): item is { vehicle: any; position: any } => item !== null);
-  }, [currentPositions, vehicles]);
+  }, [currentPositions, vehicles, isLiveTracking, simulatedVehicles]);
+
+  // Get the selected vehicle's simulated data if any
+  const selectedVehicleSimulated = useMemo(() => {
+    if (!selectedVehicleId || !isLiveTracking) return null;
+    return simulatedVehicles.find(v => v.id === selectedVehicleId);
+  }, [selectedVehicleId, simulatedVehicles, isLiveTracking]);
 
   return (
     <div className="space-y-6">
@@ -89,6 +142,9 @@ function LiveTrackingPage() {
               selectedVehicleId={selectedVehicleId}
               onSelectVehicle={handleVehicleSelect}
               loading={vehiclesLoading}
+              simulatedVehicles={simulatedVehicles}
+              isLiveTracking={isLiveTracking}
+              liveTrackingVehicles={liveTrackingVehicles}
             />
           </div>
         </div>
@@ -100,14 +156,45 @@ function LiveTrackingPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Live Map</h2>
                 <p className="text-sm text-gray-600">
-                  {selectedVehicleId
-                    ? `Tracking vehicle: ${vehicles.find(v => v.id === selectedVehicleId)?.license_plate || ''}`
-                    : 'No vehicle selected'}
+                  {selectedVehicleId ? (
+                    <>
+                      Tracking vehicle: {vehicles.find(v => v.id === selectedVehicleId)?.license_plate || ''}
+                      {isLiveTracking && (
+                        <span className="text-green-600 ml-2 text-xs font-medium">
+                          • Demo Mode (Ho Chi Minh City)
+                        </span>
+                      )}
+                    </>
+                  ) : 'No vehicle selected'}
                 </p>
               </div>
 
               {/* Map Controls */}
               <div className="flex space-x-2">
+                {/* Demo Mode Toggle - Only show when a vehicle is selected */}
+                {selectedVehicleId && (
+                  <button
+                    onClick={toggleLiveTracking}
+                    className={`flex items-center space-x-1 px-3 py-1 border rounded-md text-sm ${isLiveTracking
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    title={isLiveTracking ? "Disable demo mode" : "Enable demo mode"}
+                  >
+                    {isLiveTracking ? (
+                      <>
+                        <Pause className="h-4 w-4" />
+                        <span>Stop Demo</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" />
+                        <span>Start Demo</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
                 {/* Basemap Selector */}
                 <div className="relative">
                   <button
@@ -170,13 +257,41 @@ function LiveTrackingPage() {
               </div>
             </div>
 
-            <div className="h-[600px]">
+            <div className="h-[600px] relative">
               <Map
                 selectedVehicleId={selectedVehicleId}
                 mode="tracking"
-                key={`map-${selectedVehicleId}`}
+                key={`map-${selectedVehicleId}-${isLiveTracking}`}
                 isLiveTracking={isLiveTracking}
               />
+
+              {/* Distance info overlay for simulation mode */}
+              {isLiveTracking && selectedVehicleSimulated && (
+                <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 p-3 rounded-lg shadow z-10 max-w-xs">
+                  <div className="flex items-center text-gray-700 font-medium">
+                    <BarChart className="h-4 w-4 mr-2 text-blue-600" />
+                    <span>Simulation Statistics</span>
+                  </div>
+                  <div className="mt-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Distance traveled:</span>
+                      <span className="font-medium">{selectedVehicleSimulated.distance?.toFixed(1) || 0} km</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-gray-600">Current speed:</span>
+                      <span className="font-medium">{selectedVehicleSimulated.speed?.toFixed(1) || 0} km/h</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-gray-600">Heading:</span>
+                      <span className="font-medium">{Math.round(selectedVehicleSimulated.heading || 0)}°</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-gray-600">Location:</span>
+                      <span className="font-medium">Ho Chi Minh City</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -206,6 +321,56 @@ function LiveTrackingPage() {
           </div>
         </div>
       </div>
+
+      {/* Simulation Summary - Only show for currently simulated vehicle */}
+      {isLiveTracking && selectedVehicleSimulated && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Simulation Summary</h2>
+            <p className="text-sm text-gray-600">Vehicle movement in Ho Chi Minh City (Demo Mode)</p>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="border rounded-lg p-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {selectedVehicleSimulated.license_plate}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {vehicles.find(v => v.id === selectedVehicleSimulated.id)?.model || 'Unknown Model'}
+                    </p>
+                  </div>
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{
+                      backgroundColor: `rgb(${selectedVehicleSimulated.color?.[0] || 0}, ${selectedVehicleSimulated.color?.[1] || 0}, ${selectedVehicleSimulated.color?.[2] || 0})`
+                    }}
+                  />
+                </div>
+                <div className="mt-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Distance:</span>
+                    <span className="font-medium">{selectedVehicleSimulated.distance?.toFixed(1) || 0} km</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Speed:</span>
+                    <span className="font-medium">{selectedVehicleSimulated.speed?.toFixed(1) || 0} km/h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Heading:</span>
+                    <span className="font-medium">{Math.round(selectedVehicleSimulated.heading || 0)}°</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Location:</span>
+                    <span className="font-medium">Ho Chi Minh City</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
